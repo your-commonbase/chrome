@@ -1,7 +1,7 @@
 {
-  "name": "chrome-extension-boilerplate-react",
-  "version": "5.0.4",
-  "description": "A chrome extension boilerplate built with React 18, Webpack 5, and Webpack Dev Server 4",
+  "name": "ycb-simple-chrome",
+  "version": "0.0.1",
+  "description": "Add to YCb simply by clicking the extension icon",
   "license": "MIT",
   "repository": {
     "type": "git",

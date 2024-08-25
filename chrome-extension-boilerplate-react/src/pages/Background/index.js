@@ -18,14 +18,6 @@ chrome.action.onClicked.addListener((tab) => {
     const tabTitle = tab.title;
     const tabUrl = tab.url;
     // get selection text TODO
-    // chrome.scripting.executeScript({
-    //     target: { tabId: tab.id },
-    //     function: () => {
-    //         return window.getSelection().toString();
-    //     },
-    //     }).then((selection) => {
-    //     console.log('selection:', selection[0]);
-    //     });
 
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
