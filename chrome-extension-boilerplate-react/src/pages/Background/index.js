@@ -2,7 +2,7 @@ console.log('This is the background page.');
 console.log('Put the background scripts here.');
 
 chrome.action.onClicked.addListener((tab) => {
-  chrome.storage.sync.get(['apiKey', 'cbUrl', 'urlCache'], (result) => {
+  chrome.storage.local.get(['apiKey', 'cbUrl', 'urlCache'], (result) => {
     const apiKey = result.apiKey;
     const cbUrl = result.cbUrl;
     const urlCache = result.urlCache || {};
@@ -13,16 +13,15 @@ chrome.action.onClicked.addListener((tab) => {
       return;
     }
 
-    function proceedWithPostRequest(tabTitle, tabUrl) {
+    function proceedWithPostRequest(tabTitle, tabUrl, data, cacheTabUrl) {
       chrome.scripting.executeScript({
         target: { tabId: tab.id },
         function: addToYCB,
-        args: [apiKey, cbUrl, tabTitle, tabUrl],
+        args: [apiKey, cbUrl, tabTitle, tabUrl, data, cacheTabUrl],
       });
     }
 
     const tabUrl = tab.url;
-
     let tabTitle = tab.title;
 
     if (tab.url.includes('twitter.com') || tab.url.includes('https://x.com')) {
@@ -40,9 +39,49 @@ chrome.action.onClicked.addListener((tab) => {
       return;
     }
 
+    // Capture the visible tab
+    chrome.tabs.captureVisibleTab(null, {}, async function (image) {
+      // Convert the image to a Blob
+      const response = await fetch(image);
+      const blob = await response.blob();
+
+      // Create FormData and append the image Blob
+      const formData = new FormData();
+      formData.append('file', blob);
+
+      // Upload the image
+      const uploadResponse = await fetch(
+        'https://commonbase-supabase-alpha.onrender.com/cf-images/upload',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: formData,
+        }
+      );
+      const uploadData = await uploadResponse.json();
+      const pngUrl = `${uploadData.url}?format=png`;
+      // Describe the image
+      const describeResponse = await fetch(
+        'https://commonbase-supabase-alpha.onrender.com/cf-images/describe',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ imageUrl: pngUrl }),
+        }
+      );
+      const describeData = await describeResponse.json();
+
+      // Proceed with the rest of your logic
+      proceedWithPostRequest("Image", pngUrl, `${describeData.data}\n\n[${tabTitle}](${tabUrl})`, tabUrl);
+    });
+
     // TODO does this break w comment flow?
     if (tab.url.includes('youtube.com')) {
-      console.log('YouTube page detected');
       chrome.scripting.executeScript(
         {
           target: { tabId: tab.id },
@@ -60,7 +99,7 @@ chrome.action.onClicked.addListener((tab) => {
               'Script injection failed: ',
               chrome.runtime.lastError
             );
-            proceedWithPostRequest(tabTitle, tabUrl);
+            proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
             return;
           }
 
@@ -69,18 +108,19 @@ chrome.action.onClicked.addListener((tab) => {
             tabTitle = `${tabTitle} | ${channelName}`;
           }
 
-          proceedWithPostRequest(tabTitle, tabUrl);
+          proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
         }
       );
     } else {
-      proceedWithPostRequest(tabTitle, tabUrl);
+      // proceedWithPostRequest(tabTitle, tabUrl, tabTitle);
+      // pass
     }
   });
 });
 
 // chrome.action.onClicked.addListener((tab) => {
 //   // get apiKey and cbUrl from storage
-//   chrome.storage.sync.get(['apiKey', 'cbUrl'], (result) => {
+//   chrome.storage.local.get(['apiKey', 'cbUrl'], (result) => {
 //     const apiKey = result.apiKey;
 //     const cbUrl = result.cbUrl;
 //     if (result.apiKey && result.cbUrl) {
@@ -181,6 +221,14 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId) {
   modal.style.padding = '20px';
   modal.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
   modal.style.zIndex = '1000';
+
+  // add a href to https://ycb-companion.onrender.com/dashboard/entry/{parentId}
+  const href = `https://ycb-companion.onrender.com/dashboard/entry/${parentId}`;
+  const a = document.createElement('a');
+  a.href = href;
+  a.target = '_blank';
+  a.textContent = 'View in YCB Companion';
+  modal.appendChild(a);
 
   // Create a text box
   const textBox = document.createElement('textarea');
@@ -386,7 +434,7 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId) {
   modal.appendChild(closeButton);
 }
 
-async function addToYCB(apiKey, cbUrl, tabTitle, tabUrl) {
+async function addToYCB(apiKey, cbUrl, tabTitle, tabUrl, inputData, cacheTabUrl) {
   // post to https://api-gateway-electron.onrender.com/add
   const response = await fetch(
     'https://api-gateway-electron.onrender.com/add',
@@ -398,7 +446,7 @@ async function addToYCB(apiKey, cbUrl, tabTitle, tabUrl) {
       body: JSON.stringify({
         apiKey: apiKey,
         dbPath: cbUrl,
-        data: tabTitle,
+        data: inputData,
         metadata: {
           title: tabTitle,
           author: tabUrl,
@@ -408,13 +456,12 @@ async function addToYCB(apiKey, cbUrl, tabTitle, tabUrl) {
   );
 
   const data = await response.json();
-  console.log(data);
 
   // Store the URL and ID in the cache
-  chrome.storage.sync.get(['urlCache'], (result) => {
+  chrome.storage.local.get(['urlCache'], (result) => {
     const urlCache = result.urlCache || {};
-    urlCache[tabUrl] = data.id; // Assuming 'id' is the key in the response
-    chrome.storage.sync.set({ urlCache });
+    urlCache[cacheTabUrl] = data.id; // Assuming 'id' is the key in the response
+    chrome.storage.local.set({ urlCache });
   });
 
   chrome.runtime.sendMessage({ action: 'setBadge' });

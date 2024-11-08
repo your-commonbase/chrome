@@ -10,19 +10,19 @@ const Options: React.FC<Props> = ({ title }: Props) => {
   const [cbUrl, setCbUrl] = useState('');
 
   const handleSubmit = () => {
-    chrome.storage.sync.set({ apiKey }, () => {
+    chrome.storage.local.set({ apiKey }, () => {
       console.log('API Key is set to ' + apiKey);
     });
-    chrome.storage.sync.set({ cbUrl }, () => {
+    chrome.storage.local.set({ cbUrl }, () => {
       console.log('Callback URL is set to ' + cbUrl);
     });
   };
 
   const fetchApiKeyAndCBURL = () => {
-    chrome.storage.sync.get(['apiKey'], (result) => {
+    chrome.storage.local.get(['apiKey'], (result) => {
       setApiKey(result.apiKey || '');
     });
-    chrome.storage.sync.get(['cbUrl'], (result) => {
+    chrome.storage.local.get(['cbUrl'], (result) => {
       setCbUrl(result.cbUrl || '');
     });
   }
