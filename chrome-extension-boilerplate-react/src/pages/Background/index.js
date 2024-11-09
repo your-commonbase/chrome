@@ -1,7 +1,18 @@
 console.log('This is the background page.');
 console.log('Put the background scripts here.');
 
+let isProcessing = false
+
 chrome.action.onClicked.addListener((tab) => {
+
+  if (isProcessing) {
+    console.log('Action is already in progress.');
+    return;
+  }
+
+  isProcessing = true;
+  console.log('Action started.');
+
   chrome.storage.local.get(['apiKey', 'cbUrl', 'urlCache'], (result) => {
     const apiKey = result.apiKey;
     const cbUrl = result.cbUrl;
@@ -10,6 +21,7 @@ chrome.action.onClicked.addListener((tab) => {
     if (!apiKey || !cbUrl) {
       console.log('apiKey and cbUrl are not set');
       chrome.runtime.openOptionsPage();
+      isProcessing = false;
       return;
     }
 
@@ -18,6 +30,8 @@ chrome.action.onClicked.addListener((tab) => {
         target: { tabId: tab.id },
         function: addToYCB,
         args: [apiKey, cbUrl, tabTitle, tabUrl, data, cacheTabUrl],
+      }, () => {
+        isProcessing = false;
       });
     }
 
@@ -35,50 +49,11 @@ chrome.action.onClicked.addListener((tab) => {
         target: { tabId: tab.id },
         function: openModal,
         args: [apiKey, cbUrl, tabTitle, tabUrl, urlCache[tabUrl]],
+      }, () => {
+        isProcessing = false;
       });
       return;
     }
-
-    // Capture the visible tab
-    chrome.tabs.captureVisibleTab(null, {}, async function (image) {
-      // Convert the image to a Blob
-      const response = await fetch(image);
-      const blob = await response.blob();
-
-      // Create FormData and append the image Blob
-      const formData = new FormData();
-      formData.append('file', blob);
-
-      // Upload the image
-      const uploadResponse = await fetch(
-        'https://commonbase-supabase-alpha.onrender.com/cf-images/upload',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: formData,
-        }
-      );
-      const uploadData = await uploadResponse.json();
-      const pngUrl = `${uploadData.url}?format=png`;
-      // Describe the image
-      const describeResponse = await fetch(
-        'https://commonbase-supabase-alpha.onrender.com/cf-images/describe',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ imageUrl: pngUrl }),
-        }
-      );
-      const describeData = await describeResponse.json();
-
-      // Proceed with the rest of your logic
-      proceedWithPostRequest("Image", pngUrl, `${describeData.data}\n\n[${tabTitle}](${tabUrl})`, tabUrl);
-    });
 
     // TODO does this break w comment flow?
     if (tab.url.includes('youtube.com')) {
@@ -111,9 +86,55 @@ chrome.action.onClicked.addListener((tab) => {
           proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
         }
       );
-    } else {
-      // proceedWithPostRequest(tabTitle, tabUrl, tabTitle);
-      // pass
+    } else if (tab.url.includes('open.spotify.com')) {
+      proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
+    }
+    else { // TODO: same for tiktok ig spotify twitter
+      // Capture the visible tab
+      chrome.tabs.captureVisibleTab(null, {}, async function (image) {
+        // Convert the image to a Blob
+        const response = await fetch(image);
+        const blob = await response.blob();
+
+        // Create FormData and append the image Blob
+        const formData = new FormData();
+        formData.append('file', blob);
+
+        // Upload the image
+        const uploadResponse = await fetch(
+          'https://commonbase-supabase-alpha.onrender.com/cf-images/upload',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: formData,
+          }
+        );
+        const uploadData = await uploadResponse.json();
+        const pngUrl = `${uploadData.url}?format=png`;
+        // Describe the image
+        const describeResponse = await fetch(
+          'https://commonbase-supabase-alpha.onrender.com/cf-images/describe',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ imageUrl: pngUrl }),
+          }
+        );
+        const describeData = await describeResponse.json();
+
+        // Proceed with the rest of your logic
+        proceedWithPostRequest(
+          'Image',
+          pngUrl,
+          `${describeData.data}\n\n[${tabTitle}](${tabUrl})`,
+          tabUrl
+        );
+      });
     }
   });
 });
@@ -434,7 +455,14 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId) {
   modal.appendChild(closeButton);
 }
 
-async function addToYCB(apiKey, cbUrl, tabTitle, tabUrl, inputData, cacheTabUrl) {
+async function addToYCB(
+  apiKey,
+  cbUrl,
+  tabTitle,
+  tabUrl,
+  inputData,
+  cacheTabUrl
+) {
   // post to https://api-gateway-electron.onrender.com/add
   const response = await fetch(
     'https://api-gateway-electron.onrender.com/add',
