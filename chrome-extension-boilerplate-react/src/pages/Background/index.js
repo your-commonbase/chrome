@@ -86,7 +86,7 @@ chrome.action.onClicked.addListener((tab) => {
           proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
         }
       );
-    } else if (tab.url.includes('open.spotify.com')) {
+    } else if (tab.url.includes('open.spotify.com') || tab.url.includes('twitter.com') || tab.url.includes('https://x.com') || tab.url.includes('instagram.com')) {
       proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
     }
     else { // TODO: same for tiktok ig spotify twitter
