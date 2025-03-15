@@ -8,6 +8,7 @@ interface Props {
 const Options: React.FC<Props> = ({ title }: Props) => {
   const [apiKey, setApiKey] = useState('');
   const [cbUrl, setCbUrl] = useState('');
+  const [openAIAPIKey, setOpenAIAPIKey] = useState('');
 
   const handleSubmit = () => {
     chrome.storage.local.set({ apiKey }, () => {
@@ -27,8 +28,21 @@ const Options: React.FC<Props> = ({ title }: Props) => {
     });
   }
 
+  const handleOpenAISubmit = () => {
+    chrome.storage.local.set({ openAIAPIKey }, () => {
+      console.log('API Key is set to ' + openAIAPIKey);
+    });
+  };
+
+  const fetchOpenAIAPIKey = () => {
+    chrome.storage.local.get(['openAIAPIKey'], (result) => {
+      setOpenAIAPIKey(result.openAIAPIKey || '');
+    });
+  };
+
   useEffect(() => {
     fetchApiKeyAndCBURL();
+    fetchOpenAIAPIKey();
   }, []);
 
   return (
@@ -52,6 +66,18 @@ const Options: React.FC<Props> = ({ title }: Props) => {
         <br />
         <br />
         <button type="submit">Save</button>
+      </form>
+      <form onSubmit={handleOpenAISubmit}>
+        <label>OpenAI API Key (Optional)</label>
+        <input
+          type="text"
+          value={openAIAPIKey}
+          onChange={(e) => setOpenAIAPIKey(e.target.value)}
+          placeholder={openAIAPIKey}
+        />
+        <br />
+        <br />
+        <button type="submit">Save OpenAI Key</button>
       </form>
     </div>
   );

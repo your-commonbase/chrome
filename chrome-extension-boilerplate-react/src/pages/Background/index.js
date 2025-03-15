@@ -3,6 +3,10 @@ console.log('Put the background scripts here.');
 
 let isProcessing = false
 
+
+
+
+
 chrome.action.onClicked.addListener((tab) => {
 
   if (isProcessing) {
@@ -13,10 +17,11 @@ chrome.action.onClicked.addListener((tab) => {
   isProcessing = true;
   console.log('Action started.');
 
-  chrome.storage.local.get(['apiKey', 'cbUrl', 'urlCache'], (result) => {
+  chrome.storage.local.get(['apiKey', 'cbUrl', 'urlCache', 'openAIAPIKey'], (result) => {
     const apiKey = result.apiKey;
     const cbUrl = result.cbUrl;
     const urlCache = result.urlCache || {};
+    const openAIAPIKey = result.openAIAPIKey;
 
     if (!apiKey || !cbUrl) {
       console.log('apiKey and cbUrl are not set');
@@ -30,6 +35,16 @@ chrome.action.onClicked.addListener((tab) => {
         target: { tabId: tab.id },
         function: addToYCB,
         args: [apiKey, cbUrl, tabTitle, tabUrl, data, cacheTabUrl],
+      }, () => {
+        isProcessing = false;
+      });
+    }
+
+    function proceedWithPostRequestWithComment(tabTitle, tabUrl, data, cacheTabUrl, comment) {
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        function: addToYCBWithComment,
+        args: [apiKey, cbUrl, tabTitle, tabUrl, data, cacheTabUrl, comment],
       }, () => {
         isProcessing = false;
       });
@@ -57,35 +72,101 @@ chrome.action.onClicked.addListener((tab) => {
 
     // TODO does this break w comment flow?
     if (tab.url.includes('youtube.com')) {
-      chrome.scripting.executeScript(
-        {
-          target: { tabId: tab.id },
-          func: () => {
-            const channelNameElement =
-              document.querySelector('ytd-channel-name a');
-            return channelNameElement
-              ? channelNameElement.textContent.trim()
-              : null;
-          },
-        },
-        (injectionResults) => {
-          if (chrome.runtime.lastError) {
-            console.error(
-              'Script injection failed: ',
-              chrome.runtime.lastError
-            );
-            proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
-            return;
-          }
 
-          const channelName = injectionResults[0]?.result;
-          if (channelName) {
-            tabTitle = `${tabTitle} | ${channelName}`;
-          }
-
-          proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
+      async function extractTranscript() {
+        // close cookie banner if exists
+        document.querySelector('button[aria-label*=cookies]')?.click();
+      
+        // click the "show transcript" button
+        const transcriptBtn = document.querySelector('ytd-video-description-transcript-section-renderer button');
+        if (!transcriptBtn) {
+          console.log('no transcript button found');
+          return;
         }
-      );
+        transcriptBtn.click();
+      
+        // wait for transcript container to appear (adjust time as needed)
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      
+        // scrape transcript text
+        const transcriptNodes = Array.from(document.querySelectorAll('#segments-container yt-formatted-string'));
+        const transcriptText = transcriptNodes.map(node => node.textContent.trim()).join('\n');
+      
+        // send transcript back to background (if needed)
+        chrome.runtime.sendMessage({ action: 'transcriptScraped', transcript: transcriptText });
+
+        const channelElement = document.querySelector('ytd-channel-name');
+        const channelName = channelElement?.textContent.trim().split('\n')[0];
+        
+        return {
+          transcript: transcriptText,
+          channelName: channelName,
+        };
+      }
+
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        function: extractTranscript,
+      }, async (transcript) => {
+        if (chrome.runtime.lastError) {
+          console.error('Script injection failed: ', chrome.runtime.lastError);
+          return;
+        }
+
+        if (!transcript[0].result.transcript) {
+          console.log('No transcript found');
+          return;
+        }
+
+        console.log('transcript:', transcript);
+
+        const openaiRes = await callOpenAI(openAIAPIKey, transcript[0].result.transcript, `You are a helpful assistant. You will be given a transcript of a video. Your task is to summarize the transcript in a concise and informative manner. Please ensure that the summary is accurate and relevant to the content of the video. Do not include any additional information or explanations. You are a glorified summarizer/teleprompter, so stay on topic. Use the channel name where appropriate, because it is the creators video. Channel name: ${transcript[0].result.channelName}`);
+
+        console.log('transcript extracted');
+        console.log('openaiRes:', openaiRes.choices[0].message.content);
+
+        proceedWithPostRequestWithComment(
+          tabTitle,
+          tabUrl,
+          `${tabTitle} | ${transcript[0].result.channelName}`,
+          tabUrl,
+          openaiRes.choices[0].message.content
+        );
+      });
+
+      // chrome.scripting.executeScript(
+      //   {
+      //     target: { tabId: tab.id },
+      //     func: () => {
+      //       const channelNameElement =
+      //         document.querySelector('ytd-channel-name a');
+      //       return channelNameElement
+      //         ? channelNameElement.textContent.trim()
+      //         : null;
+      //     },
+      //   },
+      //   (injectionResults) => {
+      //     if (chrome.runtime.lastError) {
+      //       console.error(
+      //         'Script injection failed: ',
+      //         chrome.runtime.lastError
+      //       );
+      //       // proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
+      //       return;
+      //     }
+
+      //     const channelName = injectionResults[0]?.result;
+      //     if (channelName) {
+      //       tabTitle = `${tabTitle} | ${channelName}`;
+      //     }
+
+      //     // proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
+      //   }
+      // );
+
+      
+
+
     } else if (tab.url.includes('open.spotify.com') || tab.url.includes('twitter.com') || tab.url.includes('https://x.com') || tab.url.includes('instagram.com')) {
       proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
     }
@@ -295,6 +376,8 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId) {
     return data;
   }
 
+  
+
   async function getParentByID(apiKey, cbUrl, parentId) {
     console.log('Getting parent by ID:', parentId);
 
@@ -455,6 +538,34 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId) {
   modal.appendChild(closeButton);
 }
 
+async function callOpenAI(apiKey, prompt, systemMessage = 'You are a helpful assistant.') {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'developer',
+          content: systemMessage,
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    }),
+  });
+
+  const data = await response.json();
+  console.log(data);
+
+  return data;
+}
+
 async function addToYCB(
   apiKey,
   cbUrl,
@@ -484,6 +595,96 @@ async function addToYCB(
   );
 
   const data = await response.json();
+
+  // Store the URL and ID in the cache
+  chrome.storage.local.get(['urlCache'], (result) => {
+    const urlCache = result.urlCache || {};
+    urlCache[cacheTabUrl] = data.id; // Assuming 'id' is the key in the response
+    chrome.storage.local.set({ urlCache });
+  });
+
+  chrome.runtime.sendMessage({ action: 'setBadge' });
+}
+
+async function addToYCBWithComment(
+  apiKey,
+  cbUrl,
+  tabTitle,
+  tabUrl,
+  inputData,
+  cacheTabUrl,
+  comment
+) {
+  // post to https://api-gateway-electron.onrender.com/add
+  const response = await fetch(
+    'https://api-gateway-electron.onrender.com/add',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        apiKey: apiKey,
+        dbPath: cbUrl,
+        data: inputData,
+        metadata: {
+          title: tabTitle,
+          author: tabUrl,
+        },
+      }),
+    }
+  );
+
+  const data = await response.json();
+
+  const id = data.id;
+  console.log('id:', id);
+
+  // post to https://api-gateway-electron.onrender.com/add
+  const response2 = await fetch(
+    'https://api-gateway-electron.onrender.com/add',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        apiKey: apiKey,
+        dbPath: cbUrl,
+        data: comment,
+        metadata: {
+          parent_id: id,
+          title: tabTitle,
+          author: tabUrl,
+        },
+      }),
+    }
+  );
+
+  const data2 = await response2.json();
+  const id2 = data2.id;
+
+  // post to https://api-gateway-electron.onrender.com/update
+  const response3 = await fetch(
+    'https://api-gateway-electron.onrender.com/update',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        apiKey: apiKey,
+        dbPath: cbUrl,
+        data: inputData,
+        metadata: {
+          alias_ids: [id2],
+          title: tabTitle,
+          author: tabUrl,
+        },
+        id: id,
+      }),
+    }
+  );
 
   // Store the URL and ID in the cache
   chrome.storage.local.get(['urlCache'], (result) => {
