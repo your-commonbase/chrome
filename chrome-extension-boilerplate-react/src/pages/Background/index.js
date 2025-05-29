@@ -5,7 +5,23 @@ let isProcessing = false
 
 
 
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: "open-side-panel-with-selection",
+    title: "Search YCB for: \"%s\"",
+    contexts: ["selection"],
+  });
+});
 
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === "open-side-panel-with-selection" && tab.id) {
+    const selectedText = info.selectionText || "";
+    chrome.storage.local.set({ panelQuery: selectedText }, () => {
+      chrome.sidePanel.open({ tabId: tab.id });
+      chrome.runtime.sendMessage({ action: "updatePanelQuery", query: selectedText });
+    });
+  }
+});
 
 chrome.action.onClicked.addListener((tab) => {
 
@@ -59,13 +75,22 @@ chrome.action.onClicked.addListener((tab) => {
 
     // Check if the URL is already in the cache
     if (urlCache[tabUrl]) {
-      console.log('URL already visited, opening popup', urlCache[tabUrl]);
+      // Inject script to get selected text
       chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        function: openModal,
-        args: [apiKey, cbUrl, tabTitle, tabUrl, urlCache[tabUrl]],
-      }, () => {
-        isProcessing = false;
+        func: () => window.getSelection().toString(),
+      }, (results) => {
+        let selectedText = '';
+        if (results && results[0] && results[0].result) {
+          selectedText = results[0].result;
+        }
+        chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          function: openModal,
+          args: [apiKey, cbUrl, tabTitle, tabUrl, urlCache[tabUrl], selectedText],
+        }, () => {
+          isProcessing = false;
+        });
       });
       return;
     }
@@ -93,7 +118,7 @@ chrome.action.onClicked.addListener((tab) => {
         const transcriptText = transcriptNodes.map(node => node.textContent.trim()).join('\n');
       
         // send transcript back to background (if needed)
-        chrome.runtime.sendMessage({ action: 'transcriptScraped', transcript: transcriptText });
+        // chrome.runtime.sendMessage({ action: 'transcriptScraped', transcript: transcriptText });
 
         const channelElement = document.querySelector('ytd-channel-name');
         const channelName = channelElement?.textContent.trim().split('\n')[0];
@@ -167,56 +192,56 @@ chrome.action.onClicked.addListener((tab) => {
       
 
 
-    } else if (tab.url.includes('open.spotify.com') || tab.url.includes('twitter.com') || tab.url.includes('https://x.com') || tab.url.includes('instagram.com')) {
+    } else {
       proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
     }
-    else { // TODO: same for tiktok ig spotify twitter
-      // Capture the visible tab
-      chrome.tabs.captureVisibleTab(null, {}, async function (image) {
-        // Convert the image to a Blob
-        const response = await fetch(image);
-        const blob = await response.blob();
+    // else { // TODO: re add screenshot as option
+    //   // Capture the visible tab
+    //   chrome.tabs.captureVisibleTab(null, {}, async function (image) {
+    //     // Convert the image to a Blob
+    //     const response = await fetch(image);
+    //     const blob = await response.blob();
 
-        // Create FormData and append the image Blob
-        const formData = new FormData();
-        formData.append('file', blob);
+    //     // Create FormData and append the image Blob
+    //     const formData = new FormData();
+    //     formData.append('file', blob);
 
-        // Upload the image
-        const uploadResponse = await fetch(
-          'https://commonbase-supabase-alpha.onrender.com/cf-images/upload',
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: formData,
-          }
-        );
-        const uploadData = await uploadResponse.json();
-        const pngUrl = `${uploadData.url}?format=png`;
-        // Describe the image
-        const describeResponse = await fetch(
-          'https://commonbase-supabase-alpha.onrender.com/cf-images/describe',
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ imageUrl: pngUrl }),
-          }
-        );
-        const describeData = await describeResponse.json();
+    //     // Upload the image
+    //     const uploadResponse = await fetch(
+    //       'https://commonbase-supabase-alpha.onrender.com/cf-images/upload',
+    //       {
+    //         method: 'POST',
+    //         headers: {
+    //           Authorization: `Bearer ${apiKey}`,
+    //         },
+    //         body: formData,
+    //       }
+    //     );
+    //     const uploadData = await uploadResponse.json();
+    //     const pngUrl = `${uploadData.url}?format=png`;
+    //     // Describe the image
+    //     const describeResponse = await fetch(
+    //       'https://commonbase-supabase-alpha.onrender.com/cf-images/describe',
+    //       {
+    //         method: 'POST',
+    //         headers: {
+    //           Authorization: `Bearer ${apiKey}`,
+    //           'Content-Type': 'application/json',
+    //         },
+    //         body: JSON.stringify({ imageUrl: pngUrl }),
+    //       }
+    //     );
+    //     const describeData = await describeResponse.json();
 
-        // Proceed with the rest of your logic
-        proceedWithPostRequest(
-          'Image',
-          pngUrl,
-          `${describeData.data}\n\n[${tabTitle}](${tabUrl})`,
-          tabUrl
-        );
-      });
-    }
+    //     // Proceed with the rest of your logic
+    //     proceedWithPostRequest(
+    //       'Image',
+    //       pngUrl,
+    //       `${describeData.data}\n\n[${tabTitle}](${tabUrl})`,
+    //       tabUrl
+    //     );
+    //   });
+    // }
   });
 });
 
@@ -311,7 +336,7 @@ function editTwitterString(twitterString) {
   return `${content} (Twitter/${username})`;
 }
 
-function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId) {
+function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId, defaultText = '') {
   // Create a modal element
   const modal = document.createElement('div');
   modal.id = 'ycb-comment-modal';
@@ -325,7 +350,7 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId) {
   modal.style.zIndex = '1000';
 
   // add a href to https://ycb-companion.onrender.com/dashboard/entry/{parentId}
-  const href = `https://ycb-companion.onrender.com/dashboard/entry/${parentId}`;
+  const href = `https://development.yourcommonbase.com/dashboard/entry/${parentId}`;
   const a = document.createElement('a');
   a.href = href;
   a.target = '_blank';
@@ -338,6 +363,8 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId) {
   textBox.placeholder = 'Add a comment...';
   textBox.style.width = '100%';
   textBox.style.height = '100px';
+  textBox.value = defaultText; // <-- pre-fill with defaultText
+
 
   async function addComment(
     apiKey,
@@ -351,21 +378,20 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId) {
 
     // post to https://api-gateway-electron.onrender.com/add
     const response = await fetch(
-      'https://api-gateway-electron.onrender.com/add',
+      'https://development.yourcommonbase.com/backend/add',
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          apiKey: apiKey,
-          dbPath: cbUrl,
           data: comment,
           metadata: {
             title: tabTitle,
             author: tabUrl,
-            parent_id: parentId,
           },
+          parent_id: parentId,
         }),
       }
     );
@@ -486,45 +512,48 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId) {
       tabUrl,
       parentId
     );
-    const commentId = commentRes.id;
+    // const commentId = commentRes.id;
     // console.log('Comment added:', commentRes);
 
     // get parent by id
-    const parent = await getParentByID(apiKey, cbUrl, parentId);
-    console.log('Parent found:', parent);
+    // const parent = await getParentByID(apiKey, cbUrl, parentId);
+    // console.log('Parent found:', parent);
 
-    if (parent) {
-      let metadata = parent.metadata;
-      try {
-        metadata = JSON.parse(parent.metadata);
-      } catch (e) {
-        console.log('Error parsing metadata:', e);
-      }
-      // append commentID to parent.metadata.alias_ids[] or create new array if it doesn't exist
-      const newAliasIds = metadata.alias_ids || [];
-      newAliasIds.push(commentId);
-      metadata.alias_ids = newAliasIds;
-      parent.metadata = JSON.stringify(metadata);
+    // if (parent) {
+    //   let metadata = parent.metadata;
+    //   try {
+    //     metadata = JSON.parse(parent.metadata);
+    //   } catch (e) {
+    //     console.log('Error parsing metadata:', e);
+    //   }
+    //   // append commentID to parent.metadata.alias_ids[] or create new array if it doesn't exist
+    //   const newAliasIds = metadata.alias_ids || [];
+    //   newAliasIds.push(commentId);
+    //   metadata.alias_ids = newAliasIds;
+    //   parent.metadata = JSON.stringify(metadata);
 
-      console.log('Parent updated:', parent);
+    //   console.log('Parent updated:', parent);
 
-      // update parent id
-      const updateRes = await updateParentId(
-        apiKey,
-        cbUrl,
-        parent.data,
-        metadata,
-        parent.id
-      );
-      console.log('Parent updated:', updateRes);
-    }
+    //   // update parent id
+    //   const updateRes = await updateParentId(
+    //     apiKey,
+    //     cbUrl,
+    //     parent.data,
+    //     metadata,
+    //     parent.id
+    //   );
+    //   console.log('Parent updated:', updateRes);
+    // }
 
-    // change button text back to 'Submit'
-    submitButton.textContent = 'Submit';
-    submitButton.disabled = false;
+    // // change button text back to 'Submit'
+    // submitButton.textContent = 'Submit';
+    // submitButton.disabled = false;
 
-    // reset text box
-    textBox.value = '';
+    // // reset text box
+    // textBox.value = '';
+
+    // close the modal
+    document.body.removeChild(modal);
   });
   modal.appendChild(submitButton);
 
@@ -576,16 +605,15 @@ async function addToYCB(
 ) {
   // post to https://api-gateway-electron.onrender.com/add
   const response = await fetch(
-    'https://api-gateway-electron.onrender.com/add',
+    'https://development.yourcommonbase.com/backend/addURL',
     {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        apiKey: apiKey,
-        dbPath: cbUrl,
-        data: inputData,
+        url: tabUrl,
         metadata: {
           title: tabTitle,
           author: tabUrl,

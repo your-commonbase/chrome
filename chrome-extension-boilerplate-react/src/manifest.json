@@ -5,7 +5,7 @@
   "options_page": "options.html",
   "background": { "service_worker": "background.bundle.js" },
   "action": {
-    "default_icon": "icon-34.png"
+    "default_icon": "icon-128.png"
   },
   "icons": {
     "128": "icon-128.png"
@@ -18,10 +18,13 @@
     }
   ],
   "devtools_page": "devtools.html",
+  "side_panel": {
+    "default_path": "panel.html"
+  },
   "permissions": ["contextMenus", "activeTab", "scripting", "storage", "sidePanel", "unlimitedStorage", "tabs"],
   "web_accessible_resources": [
     {
-      "resources": ["content.styles.css", "icon-128.png", "icon-34.png"],
+      "resources": ["content.styles.css", "icon-128.png"],
       "matches": []
     }
   ]
