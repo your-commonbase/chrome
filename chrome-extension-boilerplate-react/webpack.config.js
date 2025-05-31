@@ -11,7 +11,10 @@ var ReactRefreshTypeScript = require('react-refresh-typescript');
 
 const ASSET_PATH = process.env.ASSET_PATH || '/';
 
-var alias = {};
+var alias = {
+  react: path.resolve('./node_modules/react'),
+    'react-dom': path.resolve('./node_modules/react-dom'),
+};
 
 // load the secrets
 var secretsPath = path.join(__dirname, 'secrets.' + env.NODE_ENV + '.js');

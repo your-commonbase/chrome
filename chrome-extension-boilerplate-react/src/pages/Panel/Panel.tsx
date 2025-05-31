@@ -1,8 +1,182 @@
 // ... existing code ...
 import React, { useState, useEffect } from 'react';
 import './Panel.css';
+import { instantMeiliSearch } from '@meilisearch/instant-meilisearch';
+import { InstantSearch, SearchBox, InfiniteHits } from 'react-instantsearch';
+
+const fetchImage = async (id: string): Promise<string | undefined> => {
+  console.log('Fetching image:', id);
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(['apiKey'], async (result) => {
+      const apiKey = result.apiKey;
+
+      if (!apiKey) {
+        resolve(undefined);
+        return;
+      }
+
+      try {
+        const resp = await fetch(
+          `https://development.yourcommonbase.com/backend/fetchImagesByIDs`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              ids: [id],
+            }),
+          }
+        );
+        const data = await resp.json();
+        console.log(data.body);
+        resolve(data.body.urls[id]);
+      } catch (err: any) {
+        resolve(undefined);
+      } finally {
+      }
+    });
+  });
+};
+
+const Hit = ({ hit, closeModalFn }: any) => {
+  const [image, setImage] = useState<string | undefined>(undefined);
+  
+
+  useEffect(() => {
+    const fetchAndSetImage = async () => {
+      if (hit.metadata.type && hit.metadata.type === 'image') {
+        const imageUrl = await fetchImage(hit.id);
+        console.log('imageUrl:', imageUrl);
+        setImage(imageUrl);
+      }
+    };
+    fetchAndSetImage();
+  }, [
+    hit.metadata.type,
+    hit.id,
+    hit.metadata.type === 'image',
+    hit.image,
+    fetchImage,
+  ]);
+
+  return (
+    <div key={hit.id}>
+      <div className="mx-2 mb-4 flex items-center justify-between">
+        <div className="max-w-full overflow-visible whitespace-normal break-words">
+          <a
+            href= {`/dashboard/entry/${hit.id}`}
+            onClick={() => {
+              closeModalFn();
+            }}
+            style={{ color: 'white' }}
+          >
+            <div
+              className="w-full max-w-full overflow-visible whitespace-normal break-words"
+              style={{ maxWidth: '100%' }}
+            >
+              <span
+                className="font-normal"
+                dangerouslySetInnerHTML={{
+                  __html: hit._highlightResult.data.value,
+                }}
+              />
+            </div>
+          </a>
+          {image && (
+            <img
+              src={image}
+              alt="image"
+              style={{ maxWidth: '100%' }}
+            />
+          )}
+          {hit._highlightResult.metadata.author && (
+            <>
+              <span>Author: </span>
+              <span
+                className="font-normal text-gray-500 underline hover:text-blue-600"
+                dangerouslySetInnerHTML={{
+                  __html: hit._highlightResult.metadata.author.value,
+                }}
+                onClick={() => {
+                  window.open(hit.metadata.author, '_blank');
+                }}
+              />
+              <br />
+            </>
+          )}
+          {hit._highlightResult.metadata.title && (
+            <>
+              <span>Title: </span>
+              <span
+                className="font-normal text-gray-500"
+                dangerouslySetInnerHTML={{
+                  __html: hit._highlightResult.metadata.title.value,
+                }}
+              />
+            </>
+          )}
+
+          {/* <div className="text-sm text-gray-500">
+            Created: {new Date(hit.created_at).toLocaleString()}
+            {hit.createdat !== hit.updated_at && (
+              <> | Last Updated: {new Date(hit.updated_at).toLocaleString()} </>
+            )}
+          </div> */}
+        </div>
+      </div>
+      <hr className="my-4" />
+    </div>
+  );
+};
 
 const Panel: React.FC = () => {
+  const [searchClient, setSearchClient] = useState<any | null>(null);
+  const [loadingSearch, setLoadingSearch] = useState(true);
+
+  const getToken = async (token: string) => {
+    const resp = await fetch(`https://development.yourcommonbase.com/backend/token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const data = await resp.json();
+    return data.token;
+  };
+
+  useEffect(() => {
+    // get token from apiKey
+    chrome.storage.local.get(['apiKey'], async (result) => {
+      const apiKey = result.apiKey;
+      if (!apiKey) {
+        setError('API key or URL not found.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const token = await getToken(apiKey);
+        const { searchClient: msClient } = instantMeiliSearch(
+          'https://meili-i59l.onrender.com',
+          token,
+          {
+            placeholderSearch: false,
+          }
+        );
+        setSearchClient(msClient);
+        setLoadingSearch(false);
+      } catch (err: any) {
+        setError(err.message || 'An error occurred');
+        setLoading(false);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, []);
+
   const [query, setQuery] = useState('');
 
   // On mount, get the initial query from chrome.storage
@@ -12,10 +186,12 @@ const Panel: React.FC = () => {
         message.action === 'updatePanelQuery' &&
         typeof message.query === 'string'
       ) {
+        console.log('Updating query from background:', message.query);
         setQuery(message.query);
         // search
         handleSearchManual(message.query);
       }
+      console.log('Message received:', message);
     };
     chrome.runtime.onMessage.addListener(handleMessage);
     return () => {
@@ -31,14 +207,14 @@ const Panel: React.FC = () => {
     return new Promise((resolve, reject) => {
       chrome.storage.local.get(['apiKey'], async (result) => {
         const apiKey = result.apiKey;
-  
+
         if (!apiKey) {
           setError('API key or URL not found.');
           setLoading(false);
           resolve(undefined);
           return;
         }
-  
+
         try {
           const resp = await fetch(
             `https://development.yourcommonbase.com/backend/fetchImagesByIDs`,
@@ -173,6 +349,14 @@ const Panel: React.FC = () => {
   return (
     <div className="container">
       <h1>Search YCB</h1>
+      { loadingSearch && <p>Loading...</p> }
+      { !loadingSearch && (
+        <InstantSearch indexName="ycb_fts_staging" searchClient={searchClient}>
+        <SearchBox />
+        <InfiniteHits hitComponent={Hit} />
+      </InstantSearch>
+      )}
+      
       <form onSubmit={handleSearch}>
         <input
           type="text"

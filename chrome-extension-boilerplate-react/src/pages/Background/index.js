@@ -1,30 +1,208 @@
 console.log('This is the background page.');
 console.log('Put the background scripts here.');
 
-let isProcessing = false
-
-
+let isProcessing = false;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: "open-side-panel-with-selection",
-    title: "Search YCB for: \"%s\"",
-    contexts: ["selection"],
+    id: 'open-side-panel-with-selection',
+    title: 'Search YCB for: "%s"',
+    contexts: ['selection'],
   });
 });
 
+// right click to save selected text to ycb
+chrome.contextMenus.create({
+  id: 'save-selected-text-to-ycb',
+  title: 'Save Selected Text to YCB',
+  contexts: ['selection'],
+});
+
+// right click on a url save url to endpoint /addURL
+chrome.contextMenus.create({
+  id: 'save-url-to-ycb',
+  title: 'Save URL to YCB',
+  contexts: ['link'],
+});
+
+// right click to open side panel
+chrome.contextMenus.create({
+  id: 'open-side-panel',
+  title: 'Open Side Panel',
+  contexts: ['all'],
+});
+
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "open-side-panel-with-selection" && tab.id) {
-    const selectedText = info.selectionText || "";
+  if (info.menuItemId === 'save-selected-text-to-ycb') {
+    chrome.storage.local.get(['apiKey'], (result) => {
+      const apiKey = result.apiKey;
+
+      const clipboardText = info.selectionText;
+
+      return fetch('https://development.yourcommonbase.com/backend/add', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          metadata: {
+            title: tab.title,
+            author: tab.url,
+          },
+          data: clipboardText,
+        }),
+      });
+    });
+  }
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'open-side-panel') {
+    chrome.storage.sync.get(['arcMode'], ({ arcMode }) => {
+      if (arcMode) {
+        chrome.windows.create({
+          url: chrome.runtime.getURL('panel.html'),
+          type: 'popup',
+          width: 400,
+          height: 600,
+          top: 100,
+          left: 1000, // align to right like a side panel
+          focused: true,
+        });
+      } else {
+        chrome.sidePanel.setOptions({
+          path: 'panel.html',
+          enabled: true,
+        });
+        chrome.sidePanel.open({});
+      }
+    });
+  }
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'save-url-to-ycb') {
+    chrome.storage.local.get(['apiKey'], (result) => {
+      const apiKey = result.apiKey;
+      const url = info.linkUrl;
+
+      return fetch('https://development.yourcommonbase.com/backend/addURL', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          url: url,
+          metadata: {
+            title: tab.title,
+            author: tab.url,
+          },
+        }),
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error('Upload failed');
+          console.log('URL uploaded');
+          chrome.runtime.sendMessage({ action: 'setBadge' });
+        })
+        .catch((err) => {
+          console.error('Error uploading URL:', err);
+        });
+    });
+  }
+});
+
+// right click on image save image to endpoint /addImage
+chrome.contextMenus.create({
+  id: 'save-image-to-ycb',
+  title: 'Save Image to YCB',
+  contexts: ['image'],
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'save-image-to-ycb') {
+    chrome.storage.local.get(['apiKey'], (result) => {
+      const apiKey = result.apiKey;
+      fetch(info.srcUrl)
+        .then((res) => res.blob())
+        .then((blob) => {
+          const formData = new FormData();
+          formData.append('file', blob, 'image.jpg');
+          formData.append(
+            'metadata',
+            JSON.stringify({
+              title: 'Image',
+              author: tab.url,
+            })
+          );
+
+          return fetch(
+            'https://development.yourcommonbase.com/backend/v2/addImage',
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: formData,
+            }
+          );
+        })
+        .then((res) => {
+          if (!res.ok) throw new Error('Upload failed');
+          console.log('Image uploaded');
+          chrome.runtime.sendMessage({ action: 'setBadge' });
+        })
+        .catch((err) => {
+          console.error('Error uploading image:', err);
+        });
+    });
+  }
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'open-side-panel-with-selection' && tab.id) {
+    const selectedText = info.selectionText || '';
     chrome.storage.local.set({ panelQuery: selectedText }, () => {
-      chrome.sidePanel.open({ tabId: tab.id });
-      chrome.runtime.sendMessage({ action: "updatePanelQuery", query: selectedText });
+      chrome.storage.sync.get(['arcMode'], ({ arcMode }) => {
+        if (arcMode) {
+          chrome.windows.create(
+            {
+              url: chrome.runtime.getURL('panel.html'),
+              type: 'popup',
+              width: 400,
+              height: 600,
+              top: 100,
+              left: 1000, // align to right like a side panel
+              focused: true,
+            },
+            (newWindow) => {
+              // Wait for the tab to be ready
+              const panelTab = newWindow.tabs && newWindow.tabs[0];
+              if (panelTab && panelTab.id) {
+                // Give the panel a moment to load (optional, but sometimes necessary)
+                setTimeout(() => {
+                  chrome.tabs.sendMessage(panelTab.id, {
+                    action: 'updatePanelQuery',
+                    query: selectedText,
+                  });
+                }, 500); // 500ms delay, adjust as needed
+              }
+            }
+          );
+        } else {
+          chrome.sidePanel.open({ tabId: tab.id });
+          chrome.runtime.sendMessage({
+            action: 'updatePanelQuery',
+            query: selectedText,
+          });
+        }
+      });
     });
   }
 });
 
 chrome.action.onClicked.addListener((tab) => {
-
   if (isProcessing) {
     console.log('Action is already in progress.');
     return;
@@ -33,216 +211,258 @@ chrome.action.onClicked.addListener((tab) => {
   isProcessing = true;
   console.log('Action started.');
 
-  chrome.storage.local.get(['apiKey', 'cbUrl', 'urlCache', 'openAIAPIKey'], (result) => {
-    const apiKey = result.apiKey;
-    const cbUrl = result.cbUrl;
-    const urlCache = result.urlCache || {};
-    const openAIAPIKey = result.openAIAPIKey;
+  chrome.storage.local.get(
+    ['apiKey', 'cbUrl', 'urlCache', 'openAIAPIKey'],
+    (result) => {
+      const apiKey = result.apiKey;
+      const cbUrl = result.cbUrl;
+      const urlCache = result.urlCache || {};
+      const openAIAPIKey = result.openAIAPIKey;
 
-    if (!apiKey || !cbUrl) {
-      console.log('apiKey and cbUrl are not set');
-      chrome.runtime.openOptionsPage();
-      isProcessing = false;
-      return;
-    }
-
-    function proceedWithPostRequest(tabTitle, tabUrl, data, cacheTabUrl) {
-      chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        function: addToYCB,
-        args: [apiKey, cbUrl, tabTitle, tabUrl, data, cacheTabUrl],
-      }, () => {
+      if (!apiKey || !cbUrl) {
+        console.log('apiKey and cbUrl are not set');
+        chrome.runtime.openOptionsPage();
         isProcessing = false;
-      });
-    }
-
-    function proceedWithPostRequestWithComment(tabTitle, tabUrl, data, cacheTabUrl, comment) {
-      chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        function: addToYCBWithComment,
-        args: [apiKey, cbUrl, tabTitle, tabUrl, data, cacheTabUrl, comment],
-      }, () => {
-        isProcessing = false;
-      });
-    }
-
-    const tabUrl = tab.url;
-    let tabTitle = tab.title;
-
-    if (tab.url.includes('twitter.com') || tab.url.includes('https://x.com')) {
-      tabTitle = editTwitterString(tabTitle);
-    }
-
-    // Check if the URL is already in the cache
-    if (urlCache[tabUrl]) {
-      // Inject script to get selected text
-      chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => window.getSelection().toString(),
-      }, (results) => {
-        let selectedText = '';
-        if (results && results[0] && results[0].result) {
-          selectedText = results[0].result;
-        }
-        chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          function: openModal,
-          args: [apiKey, cbUrl, tabTitle, tabUrl, urlCache[tabUrl], selectedText],
-        }, () => {
-          isProcessing = false;
-        });
-      });
-      return;
-    }
-
-    // TODO does this break w comment flow?
-    if (tab.url.includes('youtube.com')) {
-
-      async function extractTranscript() {
-        // close cookie banner if exists
-        document.querySelector('button[aria-label*=cookies]')?.click();
-      
-        // click the "show transcript" button
-        const transcriptBtn = document.querySelector('ytd-video-description-transcript-section-renderer button');
-        if (!transcriptBtn) {
-          console.log('no transcript button found');
-          return;
-        }
-        transcriptBtn.click();
-      
-        // wait for transcript container to appear (adjust time as needed)
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      
-        // scrape transcript text
-        const transcriptNodes = Array.from(document.querySelectorAll('#segments-container yt-formatted-string'));
-        const transcriptText = transcriptNodes.map(node => node.textContent.trim()).join('\n');
-      
-        // send transcript back to background (if needed)
-        // chrome.runtime.sendMessage({ action: 'transcriptScraped', transcript: transcriptText });
-
-        const channelElement = document.querySelector('ytd-channel-name');
-        const channelName = channelElement?.textContent.trim().split('\n')[0];
-        
-        return {
-          transcript: transcriptText,
-          channelName: channelName,
-        };
+        return;
       }
 
-      chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        function: extractTranscript,
-      }, async (transcript) => {
-        if (chrome.runtime.lastError) {
-          console.error('Script injection failed: ', chrome.runtime.lastError);
-          return;
-        }
-
-        if (!transcript[0].result.transcript) {
-          console.log('No transcript found');
-          return;
-        }
-
-        console.log('transcript:', transcript);
-
-        const openaiRes = await callOpenAI(openAIAPIKey, transcript[0].result.transcript, `You are a helpful assistant. You will be given a transcript of a video. Your task is to summarize the transcript in a concise and informative manner. Please ensure that the summary is accurate and relevant to the content of the video. Do not include any additional information or explanations. You are a glorified summarizer/teleprompter, so stay on topic. Use the channel name where appropriate, because it is the creators video. Channel name: ${transcript[0].result.channelName}`);
-
-        console.log('transcript extracted');
-        console.log('openaiRes:', openaiRes.choices[0].message.content);
-
-        proceedWithPostRequestWithComment(
-          tabTitle,
-          tabUrl,
-          `${tabTitle} | ${transcript[0].result.channelName}`,
-          tabUrl,
-          openaiRes.choices[0].message.content
+      function proceedWithPostRequest(tabTitle, tabUrl, data, cacheTabUrl) {
+        chrome.scripting.executeScript(
+          {
+            target: { tabId: tab.id },
+            function: addToYCB,
+            args: [apiKey, cbUrl, tabTitle, tabUrl, data, cacheTabUrl],
+          },
+          () => {
+            isProcessing = false;
+          }
         );
-      });
+      }
 
-      // chrome.scripting.executeScript(
-      //   {
-      //     target: { tabId: tab.id },
-      //     func: () => {
-      //       const channelNameElement =
-      //         document.querySelector('ytd-channel-name a');
-      //       return channelNameElement
-      //         ? channelNameElement.textContent.trim()
-      //         : null;
-      //     },
-      //   },
-      //   (injectionResults) => {
-      //     if (chrome.runtime.lastError) {
-      //       console.error(
-      //         'Script injection failed: ',
-      //         chrome.runtime.lastError
-      //       );
-      //       // proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
-      //       return;
-      //     }
+      function proceedWithPostRequestWithComment(
+        tabTitle,
+        tabUrl,
+        data,
+        cacheTabUrl,
+        comment
+      ) {
+        chrome.scripting.executeScript(
+          {
+            target: { tabId: tab.id },
+            function: addToYCBWithComment,
+            args: [apiKey, cbUrl, tabTitle, tabUrl, data, cacheTabUrl, comment],
+          },
+          () => {
+            isProcessing = false;
+          }
+        );
+      }
 
-      //     const channelName = injectionResults[0]?.result;
-      //     if (channelName) {
-      //       tabTitle = `${tabTitle} | ${channelName}`;
-      //     }
+      const tabUrl = tab.url;
+      let tabTitle = tab.title;
 
-      //     // proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
-      //   }
-      // );
+      if (
+        tab.url.includes('twitter.com') ||
+        tab.url.includes('https://x.com')
+      ) {
+        tabTitle = editTwitterString(tabTitle);
+      }
 
-      
+      // Check if the URL is already in the cache
+      if (urlCache[tabUrl]) {
+        // Inject script to get selected text
+        chrome.scripting.executeScript(
+          {
+            target: { tabId: tab.id },
+            func: () => window.getSelection().toString(),
+          },
+          (results) => {
+            let selectedText = '';
+            if (results && results[0] && results[0].result) {
+              selectedText = results[0].result;
+            }
+            chrome.scripting.executeScript(
+              {
+                target: { tabId: tab.id },
+                function: openModal,
+                args: [
+                  apiKey,
+                  cbUrl,
+                  tabTitle,
+                  tabUrl,
+                  urlCache[tabUrl],
+                  selectedText,
+                ],
+              },
+              () => {
+                isProcessing = false;
+              }
+            );
+          }
+        );
+        return;
+      }
 
+      // TODO does this break w comment flow?
+      if (tab.url.includes('youtube.com')) {
+        async function extractTranscript() {
+          // close cookie banner if exists
+          document.querySelector('button[aria-label*=cookies]')?.click();
 
-    } else {
-      proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
+          // click the "show transcript" button
+          const transcriptBtn = document.querySelector(
+            'ytd-video-description-transcript-section-renderer button'
+          );
+          if (!transcriptBtn) {
+            console.log('no transcript button found');
+            return;
+          }
+          transcriptBtn.click();
+
+          // wait for transcript container to appear (adjust time as needed)
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+
+          // scrape transcript text
+          const transcriptNodes = Array.from(
+            document.querySelectorAll('#segments-container yt-formatted-string')
+          );
+          const transcriptText = transcriptNodes
+            .map((node) => node.textContent.trim())
+            .join('\n');
+
+          // send transcript back to background (if needed)
+          // chrome.runtime.sendMessage({ action: 'transcriptScraped', transcript: transcriptText });
+
+          const channelElement = document.querySelector('ytd-channel-name');
+          const channelName = channelElement?.textContent.trim().split('\n')[0];
+
+          return {
+            transcript: transcriptText,
+            channelName: channelName,
+          };
+        }
+
+        chrome.scripting.executeScript(
+          {
+            target: { tabId: tab.id },
+            function: extractTranscript,
+          },
+          async (transcript) => {
+            if (chrome.runtime.lastError) {
+              console.error(
+                'Script injection failed: ',
+                chrome.runtime.lastError
+              );
+              return;
+            }
+
+            if (!transcript[0].result.transcript) {
+              console.log('No transcript found');
+              return;
+            }
+
+            console.log('transcript:', transcript);
+
+            const openaiRes = await callOpenAI(
+              openAIAPIKey,
+              transcript[0].result.transcript,
+              `You are a helpful assistant. You will be given a transcript of a video. Your task is to summarize the transcript in a concise and informative manner. Please ensure that the summary is accurate and relevant to the content of the video. Do not include any additional information or explanations. You are a glorified summarizer/teleprompter, so stay on topic. Use the channel name where appropriate, because it is the creators video. Channel name: ${transcript[0].result.channelName}`
+            );
+
+            console.log('transcript extracted');
+            console.log('openaiRes:', openaiRes.choices[0].message.content);
+
+            proceedWithPostRequestWithComment(
+              tabTitle,
+              tabUrl,
+              `${tabTitle} | ${transcript[0].result.channelName}`,
+              tabUrl,
+              openaiRes.choices[0].message.content
+            );
+          }
+        );
+
+        // chrome.scripting.executeScript(
+        //   {
+        //     target: { tabId: tab.id },
+        //     func: () => {
+        //       const channelNameElement =
+        //         document.querySelector('ytd-channel-name a');
+        //       return channelNameElement
+        //         ? channelNameElement.textContent.trim()
+        //         : null;
+        //     },
+        //   },
+        //   (injectionResults) => {
+        //     if (chrome.runtime.lastError) {
+        //       console.error(
+        //         'Script injection failed: ',
+        //         chrome.runtime.lastError
+        //       );
+        //       // proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
+        //       return;
+        //     }
+
+        //     const channelName = injectionResults[0]?.result;
+        //     if (channelName) {
+        //       tabTitle = `${tabTitle} | ${channelName}`;
+        //     }
+
+        //     // proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
+        //   }
+        // );
+      } else {
+        proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
+      }
+      // else { // TODO: re add screenshot as option
+      //   // Capture the visible tab
+      //   chrome.tabs.captureVisibleTab(null, {}, async function (image) {
+      //     // Convert the image to a Blob
+      //     const response = await fetch(image);
+      //     const blob = await response.blob();
+
+      //     // Create FormData and append the image Blob
+      //     const formData = new FormData();
+      //     formData.append('file', blob);
+
+      //     // Upload the image
+      //     const uploadResponse = await fetch(
+      //       'https://commonbase-supabase-alpha.onrender.com/cf-images/upload',
+      //       {
+      //         method: 'POST',
+      //         headers: {
+      //           Authorization: `Bearer ${apiKey}`,
+      //         },
+      //         body: formData,
+      //       }
+      //     );
+      //     const uploadData = await uploadResponse.json();
+      //     const pngUrl = `${uploadData.url}?format=png`;
+      //     // Describe the image
+      //     const describeResponse = await fetch(
+      //       'https://commonbase-supabase-alpha.onrender.com/cf-images/describe',
+      //       {
+      //         method: 'POST',
+      //         headers: {
+      //           Authorization: `Bearer ${apiKey}`,
+      //           'Content-Type': 'application/json',
+      //         },
+      //         body: JSON.stringify({ imageUrl: pngUrl }),
+      //       }
+      //     );
+      //     const describeData = await describeResponse.json();
+
+      //     // Proceed with the rest of your logic
+      //     proceedWithPostRequest(
+      //       'Image',
+      //       pngUrl,
+      //       `${describeData.data}\n\n[${tabTitle}](${tabUrl})`,
+      //       tabUrl
+      //     );
+      //   });
+      // }
     }
-    // else { // TODO: re add screenshot as option
-    //   // Capture the visible tab
-    //   chrome.tabs.captureVisibleTab(null, {}, async function (image) {
-    //     // Convert the image to a Blob
-    //     const response = await fetch(image);
-    //     const blob = await response.blob();
-
-    //     // Create FormData and append the image Blob
-    //     const formData = new FormData();
-    //     formData.append('file', blob);
-
-    //     // Upload the image
-    //     const uploadResponse = await fetch(
-    //       'https://commonbase-supabase-alpha.onrender.com/cf-images/upload',
-    //       {
-    //         method: 'POST',
-    //         headers: {
-    //           Authorization: `Bearer ${apiKey}`,
-    //         },
-    //         body: formData,
-    //       }
-    //     );
-    //     const uploadData = await uploadResponse.json();
-    //     const pngUrl = `${uploadData.url}?format=png`;
-    //     // Describe the image
-    //     const describeResponse = await fetch(
-    //       'https://commonbase-supabase-alpha.onrender.com/cf-images/describe',
-    //       {
-    //         method: 'POST',
-    //         headers: {
-    //           Authorization: `Bearer ${apiKey}`,
-    //           'Content-Type': 'application/json',
-    //         },
-    //         body: JSON.stringify({ imageUrl: pngUrl }),
-    //       }
-    //     );
-    //     const describeData = await describeResponse.json();
-
-    //     // Proceed with the rest of your logic
-    //     proceedWithPostRequest(
-    //       'Image',
-    //       pngUrl,
-    //       `${describeData.data}\n\n[${tabTitle}](${tabUrl})`,
-    //       tabUrl
-    //     );
-    //   });
-    // }
-  });
+  );
 });
 
 // chrome.action.onClicked.addListener((tab) => {
@@ -336,7 +556,14 @@ function editTwitterString(twitterString) {
   return `${content} (Twitter/${username})`;
 }
 
-function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId, defaultText = '') {
+function openModal(
+  apiKey,
+  cbUrl,
+  tabTitle,
+  tabUrl,
+  parentId,
+  defaultText = ''
+) {
   // Create a modal element
   const modal = document.createElement('div');
   modal.id = 'ycb-comment-modal';
@@ -365,7 +592,6 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId, defaultText = '') 
   textBox.style.height = '100px';
   textBox.value = defaultText; // <-- pre-fill with defaultText
 
-
   async function addComment(
     apiKey,
     cbUrl,
@@ -383,7 +609,7 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId, defaultText = '') 
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           data: comment,
@@ -401,8 +627,6 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId, defaultText = '') 
 
     return data;
   }
-
-  
 
   async function getParentByID(apiKey, cbUrl, parentId) {
     console.log('Getting parent by ID:', parentId);
@@ -567,12 +791,16 @@ function openModal(apiKey, cbUrl, tabTitle, tabUrl, parentId, defaultText = '') 
   modal.appendChild(closeButton);
 }
 
-async function callOpenAI(apiKey, prompt, systemMessage = 'You are a helpful assistant.') {
+async function callOpenAI(
+  apiKey,
+  prompt,
+  systemMessage = 'You are a helpful assistant.'
+) {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: 'gpt-4o',
@@ -610,7 +838,7 @@ async function addToYCB(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         url: tabUrl,

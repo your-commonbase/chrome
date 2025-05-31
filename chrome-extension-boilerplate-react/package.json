@@ -13,8 +13,11 @@
     "prettier": "prettier --write '**/*.{js,jsx,ts,tsx,json,css,scss,md}'"
   },
   "dependencies": {
+    "@meilisearch/instant-meilisearch": "^0.26.0",
+    "instantsearch.css": "^8.5.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-instantsearch": "^7.15.8"
   },
   "devDependencies": {
     "@babel/core": "^7.20.12",

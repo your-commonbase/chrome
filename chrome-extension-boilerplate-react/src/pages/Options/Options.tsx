@@ -26,7 +26,7 @@ const Options: React.FC<Props> = ({ title }: Props) => {
     chrome.storage.local.get(['cbUrl'], (result) => {
       setCbUrl(result.cbUrl || '');
     });
-  }
+  };
 
   const handleOpenAISubmit = () => {
     chrome.storage.local.set({ openAIAPIKey }, () => {
@@ -43,6 +43,34 @@ const Options: React.FC<Props> = ({ title }: Props) => {
   useEffect(() => {
     fetchApiKeyAndCBURL();
     fetchOpenAIAPIKey();
+  }, []);
+
+  useEffect(() => {
+    const arcCheckbox = document.getElementById('arcMode') as HTMLInputElement;
+
+    const updateArcMode = (result: any) => {
+      if (arcCheckbox) {
+        arcCheckbox.checked = result.arcMode || false;
+      }
+    };
+
+    const handleCheckboxChange = () => {
+      if (arcCheckbox) {
+        chrome.storage.sync.set({ arcMode: arcCheckbox.checked });
+      }
+    };
+
+    chrome.storage.sync.get(['arcMode'], updateArcMode);
+
+    if (arcCheckbox) {
+      arcCheckbox.addEventListener('change', handleCheckboxChange);
+    }
+
+    return () => {
+      if (arcCheckbox) {
+        arcCheckbox.removeEventListener('change', handleCheckboxChange);
+      }
+    };
   }, []);
 
   return (
@@ -62,7 +90,8 @@ const Options: React.FC<Props> = ({ title }: Props) => {
           type="text"
           value={cbUrl}
           onChange={(e) => setCbUrl(e.target.value)}
-          placeholder={cbUrl}/>
+          placeholder={cbUrl}
+        />
         <br />
         <br />
         <button type="submit">Save</button>
@@ -79,6 +108,10 @@ const Options: React.FC<Props> = ({ title }: Props) => {
         <br />
         <button type="submit">Save OpenAI Key</button>
       </form>
+      <label>
+        <input type="checkbox" id="arcMode" />
+        I’m using Arc Browser (use tab instead of side panel)
+      </label>
     </div>
   );
 };
