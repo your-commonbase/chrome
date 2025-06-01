@@ -1,11 +1,10 @@
-// ... existing code ...
 import React, { useState, useEffect } from 'react';
 import './Panel.css';
 import { instantMeiliSearch } from '@meilisearch/instant-meilisearch';
-import { InstantSearch, SearchBox, InfiniteHits } from 'react-instantsearch';
+import { InstantSearch, InfiniteHits } from 'react-instantsearch';
+import CustomSearchBox from './CustomSearchBox';
 
-const fetchImage = async (id: string): Promise<string | undefined> => {
-  console.log('Fetching image:', id);
+const fetchImage = async (id: string): Promise<any | undefined> => {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(['apiKey'], async (result) => {
       const apiKey = result.apiKey;
@@ -30,8 +29,7 @@ const fetchImage = async (id: string): Promise<string | undefined> => {
           }
         );
         const data = await resp.json();
-        console.log(data.body);
-        resolve(data.body.urls[id]);
+        resolve({ id, image: data.body.urls[id] });
       } catch (err: any) {
         resolve(undefined);
       } finally {
@@ -41,14 +39,13 @@ const fetchImage = async (id: string): Promise<string | undefined> => {
 };
 
 const Hit = ({ hit, closeModalFn }: any) => {
-  const [image, setImage] = useState<string | undefined>(undefined);
+  const [image, setImage] = useState<any | undefined>(undefined);
   
 
   useEffect(() => {
     const fetchAndSetImage = async () => {
       if (hit.metadata.type && hit.metadata.type === 'image') {
         const imageUrl = await fetchImage(hit.id);
-        console.log('imageUrl:', imageUrl);
         setImage(imageUrl);
       }
     };
@@ -65,10 +62,13 @@ const Hit = ({ hit, closeModalFn }: any) => {
     <div key={hit.id}>
       <div className="mx-2 mb-4 flex items-center justify-between">
         <div className="max-w-full overflow-visible whitespace-normal break-words">
-          <a
-            href= {`/dashboard/entry/${hit.id}`}
-            onClick={() => {
-              closeModalFn();
+          <span
+            onClick={(e) => {
+              e.preventDefault();
+              // open in a new tab (or use chrome.tabs.update to reuse the current one)
+              chrome.tabs.create({
+                url: `https://development.yourcommonbase.com/dashboard/entry/${hit.id}`,
+              });
             }}
             style={{ color: 'white' }}
           >
@@ -83,10 +83,10 @@ const Hit = ({ hit, closeModalFn }: any) => {
                 }}
               />
             </div>
-          </a>
-          {image && (
+          </span>
+          {image && image.id === hit.id && (
             <img
-              src={image}
+              src={image.image}
               alt="image"
               style={{ maxWidth: '100%' }}
             />
@@ -120,7 +120,7 @@ const Hit = ({ hit, closeModalFn }: any) => {
 
           {/* <div className="text-sm text-gray-500">
             Created: {new Date(hit.created_at).toLocaleString()}
-            {hit.createdat !== hit.updated_at && (
+            {hit.created_at !== hit.updated_at && (
               <> | Last Updated: {new Date(hit.updated_at).toLocaleString()} </>
             )}
           </div> */}
@@ -134,6 +134,7 @@ const Hit = ({ hit, closeModalFn }: any) => {
 const Panel: React.FC = () => {
   const [searchClient, setSearchClient] = useState<any | null>(null);
   const [loadingSearch, setLoadingSearch] = useState(true);
+  
 
   const getToken = async (token: string) => {
     const resp = await fetch(`https://development.yourcommonbase.com/backend/token`, {
@@ -148,33 +149,40 @@ const Panel: React.FC = () => {
   };
 
   useEffect(() => {
-    // get token from apiKey
+    let intervalId: NodeJS.Timeout | null = null;
+  
     chrome.storage.local.get(['apiKey'], async (result) => {
       const apiKey = result.apiKey;
       if (!apiKey) {
-        setError('API key or URL not found.');
+        setError('api key not found');
         setLoading(false);
         return;
       }
-
-      try {
-        const token = await getToken(apiKey);
-        const { searchClient: msClient } = instantMeiliSearch(
-          'https://meili-i59l.onrender.com',
-          token,
-          {
-            placeholderSearch: false,
-          }
-        );
-        setSearchClient(msClient);
-        setLoadingSearch(false);
-      } catch (err: any) {
-        setError(err.message || 'An error occurred');
-        setLoading(false);
-      } finally {
-        setLoading(false);
-      }
+  
+      const setupClient = async () => {
+        try {
+          const token = await getToken(apiKey);
+          const { searchClient: msClient } = instantMeiliSearch(
+            'https://meili-i59l.onrender.com',
+            token,
+            { placeholderSearch: false }
+          );
+          setSearchClient(msClient);
+          setLoadingSearch(false);
+        } catch (err: any) {
+          setError(err.message || 'failed to fetch token');
+        }
+      };
+  
+      // initial setup
+      await setupClient();
+      // refresh every 60s
+      intervalId = setInterval(setupClient, 60_000);
     });
+  
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, []);
 
   const [query, setQuery] = useState('');
@@ -186,7 +194,6 @@ const Panel: React.FC = () => {
         message.action === 'updatePanelQuery' &&
         typeof message.query === 'string'
       ) {
-        console.log('Updating query from background:', message.query);
         setQuery(message.query);
         // search
         handleSearchManual(message.query);
@@ -201,46 +208,6 @@ const Panel: React.FC = () => {
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const fetchImage = async (id: string): Promise<string | undefined> => {
-    console.log('Fetching image:', id);
-    return new Promise((resolve, reject) => {
-      chrome.storage.local.get(['apiKey'], async (result) => {
-        const apiKey = result.apiKey;
-
-        if (!apiKey) {
-          setError('API key or URL not found.');
-          setLoading(false);
-          resolve(undefined);
-          return;
-        }
-
-        try {
-          const resp = await fetch(
-            `https://development.yourcommonbase.com/backend/fetchImagesByIDs`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${apiKey}`,
-              },
-              body: JSON.stringify({
-                ids: [id],
-              }),
-            }
-          );
-          const data = await resp.json();
-          console.log(data.body);
-          resolve(data.body.urls[id]);
-        } catch (err: any) {
-          setError(err.message || 'An error occurred');
-          resolve(undefined);
-        } finally {
-          setLoading(false);
-        }
-      });
-    });
-  };
 
   const handleSearchManual = async (query: string) => {
     setLoading(true);
@@ -281,7 +248,6 @@ const Panel: React.FC = () => {
         for (const item of data) {
           if (item.metadata.type && item.metadata.type === 'image') {
             const imageUrl = await fetchImage(item.id);
-            console.log('imageUrl:', imageUrl);
             item.image = imageUrl;
           }
         }
@@ -336,7 +302,6 @@ const Panel: React.FC = () => {
             item.image = await fetchImage(item.id);
           }
         }
-        console.log(data);
         setResults(data || []);
       } catch (err: any) {
         setError(err.message || 'An error occurred');
@@ -350,32 +315,23 @@ const Panel: React.FC = () => {
     <div className="container">
       <h1>Search YCB</h1>
       { loadingSearch && <p>Loading...</p> }
-      { !loadingSearch && (
-        <InstantSearch indexName="ycb_fts_staging" searchClient={searchClient}>
-        <SearchBox />
-        <InfiniteHits hitComponent={Hit} />
-      </InstantSearch>
-      )}
-      
-      <form onSubmit={handleSearch}>
-        <input
-          type="text"
-          placeholder="Search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <button className="search-button" type="submit" disabled={loading}>
-          {loading ? 'Searching...' : 'Search'}
-        </button>
-      </form>
       {error && <div className="error">{error}</div>}
       <div className="results">
-        <p>Results: {results.length}</p>
+        {results.length > 0 && <p>Results: {results.length}</p>}
         {results.map((item) => (
           <div className="card" key={item.id}>
             <h4>{item.metadata?.title || 'No Title'}</h4>
             <p>Similarity: {item.similarity}</p>
-            <p>
+            <p
+            onClick={(e) => {
+              e.preventDefault();
+              // open in a new tab (or use chrome.tabs.update to reuse the current one)
+              chrome.tabs.create({
+                url: `https://development.yourcommonbase.com/dashboard/entry/${item.id}`,
+              });
+            }}
+            style={{ color: 'white', textDecoration: 'underline' }}
+            >
               {item.metadata?.ogDescription || item.data || 'No Description'}
             </p>
             {item.metadata?.ogImages && item.metadata.ogImages.length > 0 && (
@@ -386,13 +342,18 @@ const Panel: React.FC = () => {
               />
             )}
             {item.metadata?.author && (
-              <a
-                href={item.metadata.author}
-                target="_blank"
-                rel="noopener noreferrer"
+              <span
+                className="font-normal text-gray-500 underline hover:text-blue-600"
+                onClick={(e) => {
+                  e.preventDefault();
+                  // open in a new tab (or use chrome.tabs.update to reuse the current one)
+                  chrome.tabs.create({
+                    url: `https://development.yourcommonbase.com/dashboard/entry/${item.id}`,
+                  });
+                }}
               >
                 Author Link
-              </a>
+              </span>
             )}
             {item.image && (
               <>
@@ -407,6 +368,14 @@ const Panel: React.FC = () => {
           </div>
         ))}
       </div>
+      { !loadingSearch && (
+        <InstantSearch indexName="ycb_fts_staging" searchClient={searchClient}>
+        {/* <SearchBox queryHook={queryHook} /> */}
+        <CustomSearchBox handleSearchManual={handleSearchManual} />
+        <InfiniteHits hitComponent={Hit} />
+      </InstantSearch>
+      )}
+      <span>For Search as You Type, go to the Companion and join the Search tier</span>
     </div>
   );
 };
