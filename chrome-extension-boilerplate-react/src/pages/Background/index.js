@@ -303,8 +303,8 @@ chrome.action.onClicked.addListener((tab) => {
         return;
       }
 
-      // TODO does this break w comment flow?
-      if (tab.url.includes('youtube.com')) {
+      // TODO does this break w comment flow? tab.url.includes('youtube.com')
+      if (false) {
         async function extractTranscript() {
           // close cookie banner if exists
           document.querySelector('button[aria-label*=cookies]')?.click();
