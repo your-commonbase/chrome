@@ -3,6 +3,66 @@ console.log('Put the background scripts here.');
 
 let isProcessing = false;
 
+function showToast(tabId, message, type = 'success') {
+  chrome.scripting.executeScript({
+    target: { tabId: tabId },
+    function: (message, type) => {
+      // Create toast element
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${type === 'success' ? '#4CAF50' : '#f44336'};
+        color: white;
+        padding: 16px 24px;
+        border-radius: 8px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 999999;
+        max-width: 300px;
+        word-wrap: break-word;
+        animation: slideIn 0.3s ease-out;
+      `;
+      
+      // Add animation styles
+      const style = document.createElement('style');
+      style.textContent = `
+        @keyframes slideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+          from { transform: translateX(0); opacity: 1; }
+          to { transform: translateX(100%); opacity: 0; }
+        }
+      `;
+      document.head.appendChild(style);
+      
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      
+      // Auto-remove after 3 seconds
+      setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease-in';
+        setTimeout(() => {
+          if (toast.parentNode) {
+            document.body.removeChild(toast);
+          }
+          if (style.parentNode) {
+            document.head.removeChild(style);
+          }
+        }, 300);
+      }, 3000);
+    },
+    args: [message, type]
+  }).catch(err => {
+    console.error('Error showing toast:', err);
+  });
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: 'open-side-panel-with-selection',
@@ -32,10 +92,22 @@ chrome.contextMenus.create({
   contexts: ['all'],
 });
 
+// right click to save current page to ycb
+chrome.contextMenus.create({
+  id: 'save-page-to-ycb',
+  title: 'Save Page to YCB',
+  contexts: ['page'],
+});
+
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'save-selected-text-to-ycb') {
     chrome.storage.local.get(['apiKey'], (result) => {
       const apiKey = result.apiKey;
+
+      if (!apiKey) {
+        showToast(tab.id, 'Please set API key in extension options', 'error');
+        return;
+      }
 
       const clipboardText = info.selectionText;
 
@@ -52,7 +124,15 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           },
           data: clipboardText,
         }),
-      });
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error('Upload failed');
+          showToast(tab.id, 'Selected text saved to YCB successfully!', 'success');
+        })
+        .catch((err) => {
+          console.error('Error uploading text:', err);
+          showToast(tab.id, 'Failed to save text to YCB', 'error');
+        });
     });
   }
 });
@@ -87,6 +167,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       const apiKey = result.apiKey;
       const url = info.linkUrl;
 
+      if (!apiKey) {
+        showToast(tab.id, 'Please set API key in extension options', 'error');
+        return;
+      }
+
       return fetch('https://development.yourcommonbase.com/backend/addURL', {
         method: 'POST',
         headers: {
@@ -105,9 +190,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           if (!res.ok) throw new Error('Upload failed');
           console.log('URL uploaded');
           chrome.runtime.sendMessage({ action: 'setBadge' });
+          showToast(tab.id, 'URL saved to YCB successfully!', 'success');
         })
         .catch((err) => {
           console.error('Error uploading URL:', err);
+          showToast(tab.id, 'Failed to save URL to YCB', 'error');
         });
     });
   }
@@ -124,6 +211,12 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'save-image-to-ycb') {
     chrome.storage.local.get(['apiKey'], (result) => {
       const apiKey = result.apiKey;
+      
+      if (!apiKey) {
+        showToast(tab.id, 'Please set API key in extension options', 'error');
+        return;
+      }
+
       fetch(info.srcUrl)
         .then((res) => res.blob())
         .then((blob) => {
@@ -152,9 +245,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           if (!res.ok) throw new Error('Upload failed');
           console.log('Image uploaded');
           chrome.runtime.sendMessage({ action: 'setBadge' });
+          showToast(tab.id, 'Image saved to YCB successfully!', 'success');
         })
         .catch((err) => {
           console.error('Error uploading image:', err);
+          showToast(tab.id, 'Failed to save image to YCB', 'error');
         });
     });
   }
@@ -202,7 +297,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-chrome.action.onClicked.addListener((tab) => {
+// Function to handle saving page to YCB (shared by action click and context menu)
+function savePageToYCB(tab) {
   if (isProcessing) {
     console.log('Action is already in progress.');
     return;
@@ -381,88 +477,21 @@ chrome.action.onClicked.addListener((tab) => {
             );
           }
         );
-
-        // chrome.scripting.executeScript(
-        //   {
-        //     target: { tabId: tab.id },
-        //     func: () => {
-        //       const channelNameElement =
-        //         document.querySelector('ytd-channel-name a');
-        //       return channelNameElement
-        //         ? channelNameElement.textContent.trim()
-        //         : null;
-        //     },
-        //   },
-        //   (injectionResults) => {
-        //     if (chrome.runtime.lastError) {
-        //       console.error(
-        //         'Script injection failed: ',
-        //         chrome.runtime.lastError
-        //       );
-        //       // proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
-        //       return;
-        //     }
-
-        //     const channelName = injectionResults[0]?.result;
-        //     if (channelName) {
-        //       tabTitle = `${tabTitle} | ${channelName}`;
-        //     }
-
-        //     // proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
-        //   }
-        // );
       } else {
         proceedWithPostRequest(tabTitle, tabUrl, tabTitle, tabUrl);
       }
-      // else { // TODO: re add screenshot as option
-      //   // Capture the visible tab
-      //   chrome.tabs.captureVisibleTab(null, {}, async function (image) {
-      //     // Convert the image to a Blob
-      //     const response = await fetch(image);
-      //     const blob = await response.blob();
-
-      //     // Create FormData and append the image Blob
-      //     const formData = new FormData();
-      //     formData.append('file', blob);
-
-      //     // Upload the image
-      //     const uploadResponse = await fetch(
-      //       'https://commonbase-supabase-alpha.onrender.com/cf-images/upload',
-      //       {
-      //         method: 'POST',
-      //         headers: {
-      //           Authorization: `Bearer ${apiKey}`,
-      //         },
-      //         body: formData,
-      //       }
-      //     );
-      //     const uploadData = await uploadResponse.json();
-      //     const pngUrl = `${uploadData.url}?format=png`;
-      //     // Describe the image
-      //     const describeResponse = await fetch(
-      //       'https://commonbase-supabase-alpha.onrender.com/cf-images/describe',
-      //       {
-      //         method: 'POST',
-      //         headers: {
-      //           Authorization: `Bearer ${apiKey}`,
-      //           'Content-Type': 'application/json',
-      //         },
-      //         body: JSON.stringify({ imageUrl: pngUrl }),
-      //       }
-      //     );
-      //     const describeData = await describeResponse.json();
-
-      //     // Proceed with the rest of your logic
-      //     proceedWithPostRequest(
-      //       'Image',
-      //       pngUrl,
-      //       `${describeData.data}\n\n[${tabTitle}](${tabUrl})`,
-      //       tabUrl
-      //     );
-      //   });
-      // }
     }
   );
+}
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'save-page-to-ycb') {
+    savePageToYCB(tab);
+  }
+});
+
+chrome.action.onClicked.addListener((tab) => {
+  savePageToYCB(tab);
 });
 
 // chrome.action.onClicked.addListener((tab) => {
@@ -959,5 +988,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     setTimeout(() => {
       chrome.action.setBadgeText({ text: '' });
     }, 5000);
+  }
+});
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command === 'open-side-panel') {
+    chrome.storage.sync.get(['arcMode'], ({ arcMode }) => {
+      if (arcMode) {
+        chrome.windows.create({
+          url: chrome.runtime.getURL('panel.html'),
+          type: 'popup',
+          width: 400,
+          height: 600,
+          top: 100,
+          left: 1000, // align to right like a side panel
+          focused: true,
+        });
+      } else {
+        chrome.sidePanel.setOptions({
+          path: 'panel.html',
+          enabled: true,
+        });
+        chrome.sidePanel.open({});
+      }
+    });
   }
 });

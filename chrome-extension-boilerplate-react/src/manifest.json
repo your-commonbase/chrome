@@ -21,6 +21,15 @@
   "side_panel": {
     "default_path": "panel.html"
   },
+  "commands": {
+    "open-side-panel": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+F",
+        "mac": "Command+Shift+F"
+      },
+      "description": "Open YCB side panel search"
+    }
+  },
   "permissions": ["contextMenus", "activeTab", "scripting", "storage", "sidePanel", "unlimitedStorage", "tabs"],
   "web_accessible_resources": [
     {
