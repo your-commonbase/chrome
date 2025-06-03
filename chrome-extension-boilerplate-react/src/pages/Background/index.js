@@ -92,6 +92,13 @@ chrome.contextMenus.create({
   contexts: ['all'],
 });
 
+// right click to open YCB dashboard
+chrome.contextMenus.create({
+  id: 'open-ycb-dashboard',
+  title: 'Open YCB Dashboard',
+  contexts: ['all'],
+});
+
 // right click to save current page to ycb
 chrome.contextMenus.create({
   id: 'save-page-to-ycb',
@@ -157,6 +164,14 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         });
         chrome.sidePanel.open({});
       }
+    });
+  }
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'open-ycb-dashboard') {
+    chrome.tabs.create({
+      url: 'https://development.yourcommonbase.com/dashboard'
     });
   }
 });
@@ -317,6 +332,7 @@ function savePageToYCB(tab) {
 
       if (!apiKey || !cbUrl) {
         console.log('apiKey and cbUrl are not set');
+        showToast(tab.id, 'Please set API key and CB URL in extension options', 'error');
         chrome.runtime.openOptionsPage();
         isProcessing = false;
         return;
@@ -860,35 +876,97 @@ async function addToYCB(
   inputData,
   cacheTabUrl
 ) {
-  // post to https://api-gateway-electron.onrender.com/add
-  const response = await fetch(
-    'https://development.yourcommonbase.com/backend/addURL',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        url: tabUrl,
-        metadata: {
-          title: tabTitle,
-          author: tabUrl,
+  try {
+    // post to https://api-gateway-electron.onrender.com/add
+    const response = await fetch(
+      'https://development.yourcommonbase.com/backend/addURL',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
         },
-      }),
+        body: JSON.stringify({
+          url: tabUrl,
+          metadata: {
+            title: tabTitle,
+            author: tabUrl,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) throw new Error('Upload failed');
+
+    const data = await response.json();
+
+    // Store the URL and ID in the cache
+    chrome.storage.local.get(['urlCache'], (result) => {
+      const urlCache = result.urlCache || {};
+      urlCache[cacheTabUrl] = data.id; // Assuming 'id' is the key in the response
+      chrome.storage.local.set({ urlCache });
+    });
+
+    chrome.runtime.sendMessage({ action: 'setBadge' });
+    
+    // Show success toast
+    showToastInPage('Page saved to YCB successfully!', 'success');
+  } catch (error) {
+    console.error('Error saving page:', error);
+    showToastInPage('Failed to save page to YCB', 'error');
+  }
+}
+
+function showToastInPage(message, type = 'success') {
+  // Create toast element
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: ${type === 'success' ? '#4CAF50' : '#f44336'};
+    color: white;
+    padding: 16px 24px;
+    border-radius: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 999999;
+    max-width: 300px;
+    word-wrap: break-word;
+    animation: slideIn 0.3s ease-out;
+  `;
+  
+  // Add animation styles
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
     }
-  );
-
-  const data = await response.json();
-
-  // Store the URL and ID in the cache
-  chrome.storage.local.get(['urlCache'], (result) => {
-    const urlCache = result.urlCache || {};
-    urlCache[cacheTabUrl] = data.id; // Assuming 'id' is the key in the response
-    chrome.storage.local.set({ urlCache });
-  });
-
-  chrome.runtime.sendMessage({ action: 'setBadge' });
+    @keyframes slideOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
+  `;
+  document.head.appendChild(style);
+  
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  // Auto-remove after 3 seconds
+  setTimeout(() => {
+    toast.style.animation = 'slideOut 0.3s ease-in';
+    setTimeout(() => {
+      if (toast.parentNode) {
+        document.body.removeChild(toast);
+      }
+      if (style.parentNode) {
+        document.head.removeChild(style);
+      }
+    }, 300);
+  }, 3000);
 }
 
 async function addToYCBWithComment(
@@ -900,85 +978,97 @@ async function addToYCBWithComment(
   cacheTabUrl,
   comment
 ) {
-  // post to https://api-gateway-electron.onrender.com/add
-  const response = await fetch(
-    'https://api-gateway-electron.onrender.com/add',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        apiKey: apiKey,
-        dbPath: cbUrl,
-        data: inputData,
-        metadata: {
-          title: tabTitle,
-          author: tabUrl,
+  try {
+    // post to https://api-gateway-electron.onrender.com/add
+    const response = await fetch(
+      'https://api-gateway-electron.onrender.com/add',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      }),
-    }
-  );
+        body: JSON.stringify({
+          apiKey: apiKey,
+          dbPath: cbUrl,
+          data: inputData,
+          metadata: {
+            title: tabTitle,
+            author: tabUrl,
+          },
+        }),
+      }
+    );
 
-  const data = await response.json();
+    if (!response.ok) throw new Error('Upload failed');
 
-  const id = data.id;
-  console.log('id:', id);
+    const data = await response.json();
 
-  // post to https://api-gateway-electron.onrender.com/add
-  const response2 = await fetch(
-    'https://api-gateway-electron.onrender.com/add',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        apiKey: apiKey,
-        dbPath: cbUrl,
-        data: comment,
-        metadata: {
-          parent_id: id,
-          title: tabTitle,
-          author: tabUrl,
+    const id = data.id;
+    console.log('id:', id);
+
+    // post to https://api-gateway-electron.onrender.com/add
+    const response2 = await fetch(
+      'https://api-gateway-electron.onrender.com/add',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      }),
-    }
-  );
+        body: JSON.stringify({
+          apiKey: apiKey,
+          dbPath: cbUrl,
+          data: comment,
+          metadata: {
+            parent_id: id,
+            title: tabTitle,
+            author: tabUrl,
+          },
+        }),
+      }
+    );
 
-  const data2 = await response2.json();
-  const id2 = data2.id;
+    if (!response2.ok) throw new Error('Comment upload failed');
 
-  // post to https://api-gateway-electron.onrender.com/update
-  const response3 = await fetch(
-    'https://api-gateway-electron.onrender.com/update',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        apiKey: apiKey,
-        dbPath: cbUrl,
-        data: inputData,
-        metadata: {
-          alias_ids: [id2],
-          title: tabTitle,
-          author: tabUrl,
+    const data2 = await response2.json();
+    const id2 = data2.id;
+
+    // post to https://api-gateway-electron.onrender.com/update
+    const response3 = await fetch(
+      'https://api-gateway-electron.onrender.com/update',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        id: id,
-      }),
-    }
-  );
+        body: JSON.stringify({
+          apiKey: apiKey,
+          dbPath: cbUrl,
+          data: inputData,
+          metadata: {
+            alias_ids: [id2],
+            title: tabTitle,
+            author: tabUrl,
+          },
+          id: id,
+        }),
+      }
+    );
 
-  // Store the URL and ID in the cache
-  chrome.storage.local.get(['urlCache'], (result) => {
-    const urlCache = result.urlCache || {};
-    urlCache[cacheTabUrl] = data.id; // Assuming 'id' is the key in the response
-    chrome.storage.local.set({ urlCache });
-  });
+    // Store the URL and ID in the cache
+    chrome.storage.local.get(['urlCache'], (result) => {
+      const urlCache = result.urlCache || {};
+      urlCache[cacheTabUrl] = data.id; // Assuming 'id' is the key in the response
+      chrome.storage.local.set({ urlCache });
+    });
 
-  chrome.runtime.sendMessage({ action: 'setBadge' });
+    chrome.runtime.sendMessage({ action: 'setBadge' });
+    
+    // Show success toast
+    showToastInPage('Page with summary saved to YCB successfully!', 'success');
+  } catch (error) {
+    console.error('Error saving page with comment:', error);
+    showToastInPage('Failed to save page to YCB', 'error');
+  }
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -1011,6 +1101,10 @@ chrome.commands.onCommand.addListener((command) => {
         });
         chrome.sidePanel.open({});
       }
+    });
+  } else if (command === 'open-ycb-dashboard') {
+    chrome.tabs.create({
+      url: 'https://development.yourcommonbase.com/dashboard'
     });
   }
 });
