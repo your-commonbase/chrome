@@ -187,8 +187,18 @@ const Panel: React.FC = () => {
 
   const [query, setQuery] = useState('');
 
-  // On mount, get the initial query from chrome.storage
+  // On mount, get the initial query from chrome.storage and set up message listener
   useEffect(() => {
+    // Check for initial query from storage
+    chrome.storage.local.get(['panelQuery'], (result) => {
+      if (result.panelQuery) {
+        setQuery(result.panelQuery);
+        handleSearchManual(result.panelQuery);
+        // Clear the stored query after using it
+        chrome.storage.local.remove(['panelQuery']);
+      }
+    });
+
     const handleMessage = (message: any) => {
       if (
         message.action === 'updatePanelQuery' &&
@@ -208,6 +218,11 @@ const Panel: React.FC = () => {
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const clearSemanticResults = () => {
+    setResults([]);
+    setError(null);
+  };
 
   const handleSearchManual = async (query: string) => {
     setLoading(true);
@@ -318,6 +333,12 @@ const Panel: React.FC = () => {
       {error && <div className="error">{error}</div>}
       <div className="results">
         {results.length > 0 && <p>Results: {results.length}</p>}
+        
+      </div>
+      { !loadingSearch && (
+        <InstantSearch indexName="ycb_fts_staging" searchClient={searchClient}>
+        {/* <SearchBox queryHook={queryHook} /> */}
+        <CustomSearchBox handleSearchManual={handleSearchManual} clearSemanticResults={clearSemanticResults} initialQuery={query} />
         {results.map((item) => (
           <div className="card" key={item.id}>
             <h4>{item.metadata?.title || 'No Title'}</h4>
@@ -367,11 +388,6 @@ const Panel: React.FC = () => {
             )}
           </div>
         ))}
-      </div>
-      { !loadingSearch && (
-        <InstantSearch indexName="ycb_fts_staging" searchClient={searchClient}>
-        {/* <SearchBox queryHook={queryHook} /> */}
-        <CustomSearchBox handleSearchManual={handleSearchManual} />
         <InfiniteHits hitComponent={Hit} />
       </InstantSearch>
       )}

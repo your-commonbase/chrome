@@ -162,7 +162,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           path: 'panel.html',
           enabled: true,
         });
-        chrome.sidePanel.open({});
+        chrome.sidePanel.open({ tabId: tab.id });
       }
     });
   }
@@ -302,10 +302,13 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           );
         } else {
           chrome.sidePanel.open({ tabId: tab.id });
-          chrome.runtime.sendMessage({
-            action: 'updatePanelQuery',
-            query: selectedText,
-          });
+          // Add a longer delay to ensure the side panel is loaded before sending the message
+          setTimeout(() => {
+            chrome.runtime.sendMessage({
+              action: 'updatePanelQuery',
+              query: selectedText,
+            });
+          }, 1000); // Increased delay for side panel
         }
       });
     });
@@ -1083,24 +1086,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.commands.onCommand.addListener((command) => {
   if (command === 'open-side-panel') {
-    chrome.storage.sync.get(['arcMode'], ({ arcMode }) => {
-      if (arcMode) {
-        chrome.windows.create({
-          url: chrome.runtime.getURL('panel.html'),
-          type: 'popup',
-          width: 400,
-          height: 600,
-          top: 100,
-          left: 1000, // align to right like a side panel
-          focused: true,
-        });
-      } else {
-        chrome.sidePanel.setOptions({
-          path: 'panel.html',
-          enabled: true,
-        });
-        chrome.sidePanel.open({});
-      }
+    // Get the current active tab first
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const currentTab = tabs[0];
+      if (!currentTab) return;
+      
+      chrome.storage.sync.get(['arcMode'], ({ arcMode }) => {
+        if (arcMode) {
+          chrome.windows.create({
+            url: chrome.runtime.getURL('panel.html'),
+            type: 'popup',
+            width: 400,
+            height: 600,
+            top: 100,
+            left: 1000, // align to right like a side panel
+            focused: true,
+          });
+        } else {
+          chrome.sidePanel.setOptions({
+            path: 'panel.html',
+            enabled: true,
+          });
+          chrome.sidePanel.open({ tabId: currentTab.id });
+        }
+      });
     });
   } else if (command === 'open-ycb-dashboard') {
     chrome.tabs.create({

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchBox } from 'react-instantsearch';
 
-function CustomSearchBox({ handleSearchManual, ...props }: { handleSearchManual: any }) {
+function CustomSearchBox({ handleSearchManual, clearSemanticResults, initialQuery, ...props }: { handleSearchManual: any; clearSemanticResults: any; initialQuery?: string }) {
   const { query, refine, clear } = useSearchBox(props);
   const [localQuery, setLocalQuery] = useState(query);
 
@@ -10,7 +10,15 @@ function CustomSearchBox({ handleSearchManual, ...props }: { handleSearchManual:
     setLocalQuery(query);
   }, [query]);
 
-  const onInputChange = (e) => {
+  // Handle initial query from parent component
+  useEffect(() => {
+    if (initialQuery && initialQuery !== localQuery) {
+      setLocalQuery(initialQuery);
+      refine(initialQuery);
+    }
+  }, [initialQuery, localQuery, refine]);
+
+  const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVal = e.currentTarget.value;
     setLocalQuery(newVal);
     refine(newVal); // update Meili results as you type
@@ -57,6 +65,9 @@ function CustomSearchBox({ handleSearchManual, ...props }: { handleSearchManual:
           onClick={() => {
             clear();
             setLocalQuery('');
+            if (clearSemanticResults) {
+              clearSemanticResults();
+            }
           }}
           style={{
             padding: '0 0.5rem',
