@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchBox } from 'react-instantsearch';
 
 function CustomSearchBox({ handleSearchManual, clearSemanticResults, initialQuery, ...props }: { handleSearchManual: any; clearSemanticResults: any; initialQuery?: string }) {
   const { query, refine, clear } = useSearchBox(props);
   const [localQuery, setLocalQuery] = useState(query);
   const [isSearching, setIsSearching] = useState(false);
+  const initialQueryProcessed = useRef(false);
 
   // keep localQuery in sync if InstantSearch changes it
   useEffect(() => {
@@ -13,11 +14,12 @@ function CustomSearchBox({ handleSearchManual, clearSemanticResults, initialQuer
 
   // Handle initial query from parent component
   useEffect(() => {
-    if (initialQuery && initialQuery !== localQuery) {
+    if (initialQuery && !initialQueryProcessed.current) {
       setLocalQuery(initialQuery);
       refine(initialQuery);
+      initialQueryProcessed.current = true;
     }
-  }, [initialQuery, localQuery, refine]);
+  }, [initialQuery, refine]);
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVal = e.currentTarget.value;
@@ -79,12 +81,13 @@ function CustomSearchBox({ handleSearchManual, clearSemanticResults, initialQuer
         )}
         {isSearching ? 'searching...' : 'search'}
       </button>
-      {query && (
+      {localQuery && (
         <button
           type="button"
           onClick={() => {
             clear();
             setLocalQuery('');
+            initialQueryProcessed.current = false; // Reset so initial query can work again
             if (clearSemanticResults) {
               clearSemanticResults();
             }
