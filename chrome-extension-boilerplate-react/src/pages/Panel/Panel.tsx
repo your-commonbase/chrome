@@ -262,8 +262,8 @@ const Panel: React.FC = () => {
         const data = await response.json();
         for (const item of data) {
           if (item.metadata.type && item.metadata.type === 'image') {
-            const imageUrl = await fetchImage(item.id);
-            item.image = imageUrl;
+            const imageData = await fetchImage(item.id);
+            item.image = imageData?.image;
           }
         }
         setResults(data || []);
@@ -314,7 +314,8 @@ const Panel: React.FC = () => {
         const data = await response.json();
         for (const item of data) {
           if (item.metadata.type && item.metadata.type === 'image') {
-            item.image = await fetchImage(item.id);
+            const imageData = await fetchImage(item.id);
+            item.image = imageData?.image;
           }
         }
         setResults(data || []);
@@ -332,6 +333,25 @@ const Panel: React.FC = () => {
       { loadingSearch && <p>Loading...</p> }
       {error && <div className="error">{error}</div>}
       <div className="results">
+        {loading && (
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '8px', 
+            margin: '16px 0',
+            color: '#ffffff'
+          }}>
+            <div style={{
+              width: '16px',
+              height: '16px',
+              border: '2px solid #333',
+              borderTop: '2px solid #fff',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }}></div>
+            <span>Searching...</span>
+          </div>
+        )}
         {results.length > 0 && <p>Results: {results.length}</p>}
         
       </div>
@@ -381,7 +401,7 @@ const Panel: React.FC = () => {
                 <p>Image:</p>
                 <img
                   src={item.image}
-                  alt="image"
+                  alt=""
                   style={{ maxWidth: '100%' }}
                 />
               </>

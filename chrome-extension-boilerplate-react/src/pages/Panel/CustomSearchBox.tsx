@@ -4,6 +4,7 @@ import { useSearchBox } from 'react-instantsearch';
 function CustomSearchBox({ handleSearchManual, clearSemanticResults, initialQuery, ...props }: { handleSearchManual: any; clearSemanticResults: any; initialQuery?: string }) {
   const { query, refine, clear } = useSearchBox(props);
   const [localQuery, setLocalQuery] = useState(query);
+  const [isSearching, setIsSearching] = useState(false);
 
   // keep localQuery in sync if InstantSearch changes it
   useEffect(() => {
@@ -24,11 +25,16 @@ function CustomSearchBox({ handleSearchManual, clearSemanticResults, initialQuer
     refine(newVal); // update Meili results as you type
   };
 
-  const onSearchClick = () => {
-    // 1) trigger Meili search
-    refine(localQuery);
-    // 2) run semantic search and prepend those results
-    handleSearchManual(localQuery);
+  const onSearchClick = async () => {
+    setIsSearching(true);
+    try {
+      // 1) trigger Meili search
+      refine(localQuery);
+      // 2) run semantic search and prepend those results
+      await handleSearchManual(localQuery);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   return (
@@ -48,16 +54,30 @@ function CustomSearchBox({ handleSearchManual, clearSemanticResults, initialQuer
       <button
         type="button"
         onClick={onSearchClick}
+        disabled={isSearching}
         style={{
           padding: '0 1rem',
           borderRadius: '4px',
-          background: '#444',
+          background: isSearching ? '#666' : '#444',
           color: 'white',
           border: 'none',
-          cursor: 'pointer',
+          cursor: isSearching ? 'not-allowed' : 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
         }}
       >
-        search
+        {isSearching && (
+          <div style={{
+            width: '12px',
+            height: '12px',
+            border: '1px solid #333',
+            borderTop: '1px solid #fff',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite'
+          }}></div>
+        )}
+        {isSearching ? 'searching...' : 'search'}
       </button>
       {query && (
         <button
