@@ -8,6 +8,7 @@ interface Props {
 const Options: React.FC<Props> = ({ title }: Props) => {
   const [apiKey, setApiKey] = useState('');
   const [cbUrl, setCbUrl] = useState('');
+  const [baseUrl, setBaseUrl] = useState('https://development.yourcommonbase.com');
   const [openAIAPIKey, setOpenAIAPIKey] = useState('');
 
   const handleSubmit = () => {
@@ -17,6 +18,9 @@ const Options: React.FC<Props> = ({ title }: Props) => {
     chrome.storage.local.set({ cbUrl }, () => {
       console.log('Callback URL is set to ' + cbUrl);
     });
+    chrome.storage.local.set({ baseUrl }, () => {
+      console.log('Base URL is set to ' + baseUrl);
+    });
   };
 
   const fetchApiKeyAndCBURL = () => {
@@ -25,6 +29,9 @@ const Options: React.FC<Props> = ({ title }: Props) => {
     });
     chrome.storage.local.get(['cbUrl'], (result) => {
       setCbUrl(result.cbUrl || '');
+    });
+    chrome.storage.local.get(['baseUrl'], (result) => {
+      setBaseUrl(result.baseUrl || 'https://development.yourcommonbase.com');
     });
   };
 
@@ -91,6 +98,15 @@ const Options: React.FC<Props> = ({ title }: Props) => {
           value={cbUrl}
           onChange={(e) => setCbUrl(e.target.value)}
           placeholder={cbUrl}
+        />
+        <br />
+        <br />
+        <label>Base Server URL </label>
+        <input
+          type="text"
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder="https://development.yourcommonbase.com"
         />
         <br />
         <br />

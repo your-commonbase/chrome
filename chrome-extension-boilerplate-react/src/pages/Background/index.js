@@ -3,6 +3,14 @@ console.log('Put the background scripts here.');
 
 let isProcessing = false;
 
+// Helper function to get base URL from storage with fallback
+function getBaseUrl(callback) {
+  chrome.storage.local.get(['baseUrl'], (result) => {
+    const baseUrl = result.baseUrl || 'https://development.yourcommonbase.com';
+    callback(baseUrl);
+  });
+}
+
 function showToast(tabId, message, type = 'success') {
   chrome.scripting.executeScript({
     target: { tabId: tabId },
@@ -64,46 +72,57 @@ function showToast(tabId, message, type = 'success') {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.contextMenus.create({
-    id: 'open-side-panel-with-selection',
-    title: 'Search YCB for: "%s"',
-    contexts: ['selection'],
+  // Clear existing context menus first
+  chrome.contextMenus.removeAll(() => {
+    // Create all context menu items
+    chrome.contextMenus.create({
+      id: 'open-side-panel-with-selection',
+      title: 'Search YCB for: "%s"',
+      contexts: ['selection'],
+    });
+
+    chrome.contextMenus.create({
+      id: 'save-selected-text-to-ycb',
+      title: 'Save Selected Text to YCB',
+      contexts: ['selection'],
+    });
+
+    chrome.contextMenus.create({
+      id: 'save-url-to-ycb',
+      title: 'Save URL to YCB',
+      contexts: ['link'],
+    });
+
+    chrome.contextMenus.create({
+      id: 'open-side-panel',
+      title: 'Open Side Panel',
+      contexts: ['all'],
+    });
+
+    chrome.contextMenus.create({
+      id: 'open-ycb-dashboard',
+      title: 'Open YCB Dashboard',
+      contexts: ['all'],
+    });
+
+    chrome.contextMenus.create({
+      id: 'save-page-to-ycb',
+      title: 'Save Page to YCB',
+      contexts: ['page'],
+    });
+
+    chrome.contextMenus.create({
+      id: 'save-image-to-ycb',
+      title: 'Save Image to YCB',
+      contexts: ['image'],
+    });
+
+    chrome.contextMenus.create({
+      id: 'save-screenshot-to-ycb',
+      title: 'Save Screenshot to YCB',
+      contexts: ['page'],
+    });
   });
-});
-
-// right click to save selected text to ycb
-chrome.contextMenus.create({
-  id: 'save-selected-text-to-ycb',
-  title: 'Save Selected Text to YCB',
-  contexts: ['selection'],
-});
-
-// right click on a url save url to endpoint /addURL
-chrome.contextMenus.create({
-  id: 'save-url-to-ycb',
-  title: 'Save URL to YCB',
-  contexts: ['link'],
-});
-
-// right click to open side panel
-chrome.contextMenus.create({
-  id: 'open-side-panel',
-  title: 'Open Side Panel',
-  contexts: ['all'],
-});
-
-// right click to open YCB dashboard
-chrome.contextMenus.create({
-  id: 'open-ycb-dashboard',
-  title: 'Open YCB Dashboard',
-  contexts: ['all'],
-});
-
-// right click to save current page to ycb
-chrome.contextMenus.create({
-  id: 'save-page-to-ycb',
-  title: 'Save Page to YCB',
-  contexts: ['page'],
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -118,28 +137,30 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
       const clipboardText = info.selectionText;
 
-      return fetch('https://development.yourcommonbase.com/backend/add', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          metadata: {
-            title: tab.title,
-            author: tab.url,
+      getBaseUrl((baseUrl) => {
+        fetch(`${baseUrl}/backend/add`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
           },
-          data: clipboardText,
-        }),
-      })
-        .then((res) => {
-          if (!res.ok) throw new Error('Upload failed');
-          showToast(tab.id, 'Selected text saved to YCB successfully!', 'success');
+          body: JSON.stringify({
+            metadata: {
+              title: tab.title,
+              author: tab.url,
+            },
+            data: clipboardText,
+          }),
         })
-        .catch((err) => {
-          console.error('Error uploading text:', err);
-          showToast(tab.id, 'Failed to save text to YCB', 'error');
-        });
+          .then((res) => {
+            if (!res.ok) throw new Error('Upload failed');
+            showToast(tab.id, 'Selected text saved to YCB successfully!', 'success');
+          })
+          .catch((err) => {
+            console.error('Error uploading text:', err);
+            showToast(tab.id, 'Failed to save text to YCB', 'error');
+          });
+      });
     });
   }
 });
@@ -163,6 +184,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           enabled: true,
         });
         chrome.sidePanel.open({ tabId: tab.id });
+        // Set focus flag in storage for the panel to check
+        console.log('Setting focus flag for context menu');
+        chrome.storage.local.set({ shouldFocusSearchBox: true });
       }
     });
   }
@@ -170,8 +194,71 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'open-ycb-dashboard') {
-    chrome.tabs.create({
-      url: 'https://development.yourcommonbase.com/dashboard'
+    getBaseUrl((baseUrl) => {
+      chrome.tabs.create({
+        url: `${baseUrl}/dashboard`
+      });
+    });
+  }
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'save-screenshot-to-ycb') {
+    chrome.storage.local.get(['apiKey'], (result) => {
+      const apiKey = result.apiKey;
+      
+      if (!apiKey) {
+        showToast(tab.id, 'Please set API key in extension options', 'error');
+        return;
+      }
+
+      // Capture the visible tab
+      chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, (dataUrl) => {
+        if (chrome.runtime.lastError) {
+          console.error('Screenshot failed:', chrome.runtime.lastError);
+          showToast(tab.id, 'Failed to capture screenshot', 'error');
+          return;
+        }
+
+        // Convert data URL to blob
+        fetch(dataUrl)
+          .then(res => res.blob())
+          .then(blob => {
+            const formData = new FormData();
+            formData.append('file', blob, 'screenshot.png');
+            formData.append(
+              'metadata',
+              JSON.stringify({
+                title: `Screenshot of ${tab.title}`,
+                author: tab.url,
+                type: 'image'
+              })
+            );
+
+            getBaseUrl((baseUrl) => {
+              fetch(
+                `${baseUrl}/backend/v2/addImage`,
+                {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                  },
+                  body: formData,
+                }
+              )
+                .then((res) => {
+                  if (!res.ok) throw new Error('Upload failed');
+                  console.log('Screenshot uploaded');
+                  chrome.runtime.sendMessage({ action: 'setBadge' });
+                  showToast(tab.id, 'Screenshot saved to YCB successfully!', 'success');
+                })
+                .catch((err) => {
+                  console.error('Error uploading screenshot:', err);
+                  showToast(tab.id, 'Failed to save screenshot to YCB', 'error');
+                });
+            });
+          })
+      });
     });
   }
 });
@@ -187,40 +274,36 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         return;
       }
 
-      return fetch('https://development.yourcommonbase.com/backend/addURL', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          url: url,
-          metadata: {
-            title: tab.title,
-            author: tab.url,
+      getBaseUrl((baseUrl) => {
+        fetch(`${baseUrl}/backend/addURL`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
           },
-        }),
-      })
-        .then((res) => {
-          if (!res.ok) throw new Error('Upload failed');
-          console.log('URL uploaded');
-          chrome.runtime.sendMessage({ action: 'setBadge' });
-          showToast(tab.id, 'URL saved to YCB successfully!', 'success');
+          body: JSON.stringify({
+            url: url,
+            metadata: {
+              title: tab.title,
+              author: tab.url,
+            },
+          }),
         })
-        .catch((err) => {
-          console.error('Error uploading URL:', err);
-          showToast(tab.id, 'Failed to save URL to YCB', 'error');
-        });
+          .then((res) => {
+            if (!res.ok) throw new Error('Upload failed');
+            console.log('URL uploaded');
+            chrome.runtime.sendMessage({ action: 'setBadge' });
+            showToast(tab.id, 'URL saved to YCB successfully!', 'success');
+          })
+          .catch((err) => {
+            console.error('Error uploading URL:', err);
+            showToast(tab.id, 'Failed to save URL to YCB', 'error');
+          });
+      });
     });
   }
 });
 
-// right click on image save image to endpoint /addImage
-chrome.contextMenus.create({
-  id: 'save-image-to-ycb',
-  title: 'Save Image to YCB',
-  contexts: ['image'],
-});
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'save-image-to-ycb') {
@@ -245,27 +328,29 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             })
           );
 
-          return fetch(
-            'https://development.yourcommonbase.com/backend/v2/addImage',
-            {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${apiKey}`,
-              },
-              body: formData,
-            }
-          );
+          getBaseUrl((baseUrl) => {
+            return fetch(
+              `${baseUrl}/backend/v2/addImage`,
+              {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${apiKey}`,
+                },
+                body: formData,
+              }
+            )
+              .then((res) => {
+                if (!res.ok) throw new Error('Upload failed');
+                console.log('Image uploaded');
+                chrome.runtime.sendMessage({ action: 'setBadge' });
+                showToast(tab.id, 'Image saved to YCB successfully!', 'success');
+              })
+              .catch((err) => {
+                console.error('Error uploading image:', err);
+                showToast(tab.id, 'Failed to save image to YCB', 'error');
+              });
+          });
         })
-        .then((res) => {
-          if (!res.ok) throw new Error('Upload failed');
-          console.log('Image uploaded');
-          chrome.runtime.sendMessage({ action: 'setBadge' });
-          showToast(tab.id, 'Image saved to YCB successfully!', 'success');
-        })
-        .catch((err) => {
-          console.error('Error uploading image:', err);
-          showToast(tab.id, 'Failed to save image to YCB', 'error');
-        });
     });
   }
 });
@@ -273,44 +358,58 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'open-side-panel-with-selection' && tab.id) {
     const selectedText = info.selectionText || '';
-    chrome.storage.local.set({ panelQuery: selectedText }, () => {
-      chrome.storage.sync.get(['arcMode'], ({ arcMode }) => {
-        if (arcMode) {
-          chrome.windows.create(
-            {
-              url: chrome.runtime.getURL('panel.html'),
-              type: 'popup',
-              width: 400,
-              height: 600,
-              top: 100,
-              left: 1000, // align to right like a side panel
-              focused: true,
-            },
-            (newWindow) => {
-              // Wait for the tab to be ready
-              const panelTab = newWindow.tabs && newWindow.tabs[0];
-              if (panelTab && panelTab.id) {
-                // Give the panel a moment to load (optional, but sometimes necessary)
-                setTimeout(() => {
-                  chrome.tabs.sendMessage(panelTab.id, {
-                    action: 'updatePanelQuery',
-                    query: selectedText,
-                  });
-                }, 500); // 500ms delay, adjust as needed
-              }
+    
+    // Get arc mode setting synchronously to avoid losing user gesture
+    chrome.storage.sync.get(['arcMode'], ({ arcMode }) => {
+      // Store the query for the panel to pick up
+      chrome.storage.local.set({ panelQuery: selectedText });
+      
+      if (arcMode) {
+        chrome.windows.create(
+          {
+            url: chrome.runtime.getURL('panel.html'),
+            type: 'popup',
+            width: 400,
+            height: 600,
+            top: 100,
+            left: 1000, // align to right like a side panel
+            focused: true,
+          },
+          (newWindow) => {
+            // Wait for the tab to be ready
+            const panelTab = newWindow.tabs && newWindow.tabs[0];
+            if (panelTab && panelTab.id) {
+              // Give the panel a moment to load (optional, but sometimes necessary)
+              setTimeout(() => {
+                chrome.tabs.sendMessage(panelTab.id, {
+                  action: 'updatePanelQuery',
+                  query: selectedText,
+                }).catch(err => {
+                  console.log('Message failed, panel will use storage instead:', err);
+                });
+              }, 500); // 500ms delay, adjust as needed
             }
-          );
-        } else {
-          chrome.sidePanel.open({ tabId: tab.id });
-          // Add a longer delay to ensure the side panel is loaded before sending the message
-          setTimeout(() => {
-            chrome.runtime.sendMessage({
-              action: 'updatePanelQuery',
-              query: selectedText,
-            });
-          }, 1000); // Increased delay for side panel
-        }
-      });
+          }
+        );
+      } else {
+        chrome.sidePanel.setOptions({
+          path: 'panel.html',
+          enabled: true,
+        });
+        chrome.sidePanel.open({ tabId: tab.id });
+        
+        // Send message to update existing panel (if already open) and store for new panels
+        setTimeout(() => {
+          chrome.runtime.sendMessage({
+            action: 'updatePanelQuery',
+            query: selectedText,
+          }).catch(err => {
+            console.log('No panel to receive message yet, will use storage:', err);
+          });
+        }, 100); // Short delay to ensure panel context is ready
+        
+        console.log('Panel opened, query stored and message sent');
+      }
     });
   }
 });
@@ -624,13 +723,16 @@ function openModal(
   modal.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
   modal.style.zIndex = '1000';
 
-  // add a href to https://ycb-companion.onrender.com/dashboard/entry/{parentId}
-  const href = `https://development.yourcommonbase.com/dashboard/entry/${parentId}`;
-  const a = document.createElement('a');
-  a.href = href;
-  a.target = '_blank';
-  a.textContent = 'View in YCB Companion';
-  modal.appendChild(a);
+  // add a href to dashboard/entry/{parentId}
+  chrome.storage.local.get(['baseUrl'], (result) => {
+    const baseUrl = result.baseUrl || 'https://development.yourcommonbase.com';
+    const href = `${baseUrl}/dashboard/entry/${parentId}`;
+    const a = document.createElement('a');
+    a.href = href;
+    a.target = '_blank';
+    a.textContent = 'View in YCB Companion';
+    modal.appendChild(a);
+  });
 
   // Create a text box
   const textBox = document.createElement('textarea');
@@ -650,9 +752,16 @@ function openModal(
   ) {
     console.log('Adding comment:', comment);
 
-    // post to https://api-gateway-electron.onrender.com/add
+    // get base URL from storage
+    const baseUrlResult = await new Promise((resolve) => {
+      chrome.storage.local.get(['baseUrl'], (result) => {
+        resolve(result.baseUrl || 'https://development.yourcommonbase.com');
+      });
+    });
+
+    // post to backend/add
     const response = await fetch(
-      'https://development.yourcommonbase.com/backend/add',
+      `${baseUrlResult}/backend/add`,
       {
         method: 'POST',
         headers: {
@@ -880,9 +989,16 @@ async function addToYCB(
   cacheTabUrl
 ) {
   try {
-    // post to https://api-gateway-electron.onrender.com/add
+    // get base URL from storage
+    const baseUrlResult = await new Promise((resolve) => {
+      chrome.storage.local.get(['baseUrl'], (result) => {
+        resolve(result.baseUrl || 'https://development.yourcommonbase.com');
+      });
+    });
+
+    // post to backend/addURL
     const response = await fetch(
-      'https://development.yourcommonbase.com/backend/addURL',
+      `${baseUrlResult}/backend/addURL`,
       {
         method: 'POST',
         headers: {
@@ -902,6 +1018,12 @@ async function addToYCB(
     if (!response.ok) throw new Error('Upload failed');
 
     const data = await response.json();
+
+    if (data.isDuplicate) {
+      console.log('URL already exists in YCB');
+      showToastInPage('URL already exists in YCB', 'warning');
+      return;
+    }
 
     // Store the URL and ID in the cache
     chrome.storage.local.get(['urlCache'], (result) => {
@@ -1108,12 +1230,17 @@ chrome.commands.onCommand.addListener((command) => {
             enabled: true,
           });
           chrome.sidePanel.open({ tabId: currentTab.id });
+          // Set focus flag in storage for the panel to check
+          console.log('Setting focus flag for keyboard shortcut');
+          chrome.storage.local.set({ shouldFocusSearchBox: true });
         }
       });
     });
   } else if (command === 'open-ycb-dashboard') {
-    chrome.tabs.create({
-      url: 'https://development.yourcommonbase.com/dashboard'
+    getBaseUrl((baseUrl) => {
+      chrome.tabs.create({
+        url: `${baseUrl}/dashboard`
+      });
     });
   }
 });
