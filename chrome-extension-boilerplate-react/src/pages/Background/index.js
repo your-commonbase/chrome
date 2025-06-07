@@ -118,8 +118,14 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 
     chrome.contextMenus.create({
-      id: 'save-screenshot-to-ycb',
-      title: 'Save Screenshot to YCB',
+      id: 'save-area-screenshot-to-ycb',
+      title: 'Save Area Screenshot to YCB',
+      contexts: ['page'],
+    });
+
+    chrome.contextMenus.create({
+      id: 'save-full-screenshot-to-ycb',
+      title: 'Save Full Screenshot to YCB',
       contexts: ['page'],
     });
   });
@@ -203,65 +209,145 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'save-screenshot-to-ycb') {
-    chrome.storage.local.get(['apiKey'], (result) => {
-      const apiKey = result.apiKey;
-      
-      if (!apiKey) {
-        showToast(tab.id, 'Please set API key in extension options', 'error');
+  if (info.menuItemId === 'save-area-screenshot-to-ycb') {
+    // Capture full screenshot and open crop viewer
+    captureScreenshotForCropping(tab);
+  } else if (info.menuItemId === 'save-full-screenshot-to-ycb') {
+    // Capture full screenshot and upload directly
+    captureFullScreenshot(tab);
+  }
+});
+
+// Function to capture screenshot for cropping
+function captureScreenshotForCropping(tab) {
+  chrome.storage.local.get(['apiKey'], (result) => {
+    const apiKey = result.apiKey;
+    
+    if (!apiKey) {
+      showToast(tab.id, 'Please set API key in extension options', 'error');
+      return;
+    }
+
+    // Capture the visible tab
+    chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, (dataUrl) => {
+      if (chrome.runtime.lastError) {
+        console.error('Screenshot failed:', chrome.runtime.lastError);
+        showToast(tab.id, 'Failed to capture screenshot', 'error');
         return;
       }
 
-      // Capture the visible tab
-      chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, (dataUrl) => {
-        if (chrome.runtime.lastError) {
-          console.error('Screenshot failed:', chrome.runtime.lastError);
-          showToast(tab.id, 'Failed to capture screenshot', 'error');
-          return;
+      // Store screenshot data temporarily with a unique key
+      const screenshotId = Date.now().toString();
+      chrome.storage.local.set({
+        [`screenshot_${screenshotId}`]: {
+          imageData: dataUrl,
+          tabInfo: {
+            title: tab.title,
+            url: tab.url,
+            id: tab.id
+          }
         }
-
-        // Convert data URL to blob
-        fetch(dataUrl)
-          .then(res => res.blob())
-          .then(blob => {
-            const formData = new FormData();
-            formData.append('file', blob, 'screenshot.png');
-            formData.append(
-              'metadata',
-              JSON.stringify({
-                title: `Screenshot of ${tab.title}`,
-                author: tab.url,
-                type: 'image'
-              })
-            );
-
-            getBaseUrl((baseUrl) => {
-              fetch(
-                `${baseUrl}/backend/v2/addImage`,
-                {
-                  method: 'POST',
-                  headers: {
-                    Authorization: `Bearer ${apiKey}`,
-                  },
-                  body: formData,
-                }
-              )
-                .then((res) => {
-                  if (!res.ok) throw new Error('Upload failed');
-                  console.log('Screenshot uploaded');
-                  chrome.runtime.sendMessage({ action: 'setBadge' });
-                  showToast(tab.id, 'Screenshot saved to YCB successfully!', 'success');
-                })
-                .catch((err) => {
-                  console.error('Error uploading screenshot:', err);
-                  showToast(tab.id, 'Failed to save screenshot to YCB', 'error');
-                });
-            });
-          })
+      }, () => {
+        // Open crop viewer window with screenshot ID in URL
+        chrome.windows.create({
+          url: chrome.runtime.getURL(`cropViewer.html?id=${screenshotId}`),
+          type: 'popup',
+          width: 900,
+          height: 700,
+          focused: true
+        });
       });
     });
-  }
-});
+  });
+}
+
+// Function to capture full screenshot (fallback)
+function captureFullScreenshot(tab) {
+  chrome.storage.local.get(['apiKey'], (result) => {
+    const apiKey = result.apiKey;
+    
+    if (!apiKey) {
+      showToast(tab.id, 'Please set API key in extension options', 'error');
+      return;
+    }
+
+    chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, (dataUrl) => {
+      if (chrome.runtime.lastError) {
+        console.error('Screenshot failed:', chrome.runtime.lastError);
+        showToast(tab.id, 'Failed to capture screenshot', 'error');
+        return;
+      }
+
+      const tabInfo = {
+        title: tab.title,
+        url: tab.url,
+        id: tab.id
+      };
+
+      uploadScreenshot(dataUrl, tabInfo, apiKey, 'Screenshot of ' + tab.title)
+        .catch((error) => {
+          console.error('Failed to upload full screenshot:', error);
+        });
+    });
+  });
+}
+
+
+// Function to upload screenshot (returns Promise for async handling)
+function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
+  return new Promise((resolve, reject) => {
+    fetch(dataUrl)
+      .then(res => res.blob())
+      .then(blob => {
+        const formData = new FormData();
+        formData.append('file', blob, 'screenshot.png');
+        formData.append(
+          'metadata',
+          JSON.stringify({
+            title: title,
+            author: tabInfo.url,
+            type: 'image'
+          })
+        );
+
+        getBaseUrl((baseUrl) => {
+          fetch(
+            `${baseUrl}/backend/v2/addImage`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: formData,
+            }
+          )
+            .then((res) => {
+              if (!res.ok) throw new Error('Upload failed');
+              console.log('Screenshot uploaded');
+              chrome.runtime.sendMessage({ action: 'setBadge' });
+              
+              // Show toast if we have a tab ID
+              if (tabInfo.id) {
+                showToast(tabInfo.id, 'Screenshot saved to YCB successfully!', 'success');
+              }
+              
+              resolve();
+            })
+            .catch((err) => {
+              console.error('Error uploading screenshot:', err);
+              
+              // Show toast if we have a tab ID
+              if (tabInfo.id) {
+                showToast(tabInfo.id, 'Failed to save screenshot to YCB', 'error');
+              }
+              
+              reject(err);
+            });
+        });
+      })
+      .catch(reject);
+  });
+}
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'save-url-to-ycb') {
@@ -1203,6 +1289,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     setTimeout(() => {
       chrome.action.setBadgeText({ text: '' });
     }, 5000);
+  } else if (message.action === 'uploadCroppedScreenshot') {
+    // Handle cropped screenshot upload
+    const { imageData, tabInfo } = message;
+    
+    chrome.storage.local.get(['apiKey'], (result) => {
+      const apiKey = result.apiKey;
+      
+      if (!apiKey) {
+        sendResponse({ success: false, error: 'API key not found' });
+        return;
+      }
+
+      try {
+        uploadScreenshot(imageData, tabInfo, apiKey, `Area screenshot of ${tabInfo.title}`)
+          .then(() => {
+            sendResponse({ success: true });
+          })
+          .catch((error) => {
+            sendResponse({ success: false, error: error.message });
+          });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    });
+    
+    return true; // Keep message channel open for async response
   }
 });
 
