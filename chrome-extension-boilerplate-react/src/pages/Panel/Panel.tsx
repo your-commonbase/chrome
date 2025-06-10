@@ -64,72 +64,71 @@ const Hit = ({ hit, closeModalFn }: any) => {
     fetchImage,
   ]);
 
+  const handleClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    const baseUrl = await getBaseUrl();
+    chrome.tabs.create({
+      url: `${baseUrl}/dashboard/entry/${hit.id}`,
+    });
+  };
+
   return (
-    <div key={hit.id}>
-      <div className="mx-2 mb-4 flex items-center justify-between">
-        <div className="max-w-full overflow-visible whitespace-normal break-words">
-          <span
-            onClick={async (e) => {
-              e.preventDefault();
-              // open in a new tab (or use chrome.tabs.update to reuse the current one)
-              const baseUrl = await getBaseUrl();
-              chrome.tabs.create({
-                url: `${baseUrl}/dashboard/entry/${hit.id}`,
-              });
-            }}
-            style={{ color: 'white' }}
-          >
-            <div
-              className="w-full max-w-full overflow-visible whitespace-normal break-words"
-              style={{ maxWidth: '100%' }}
-            >
-              <span
-                className="font-normal"
-                dangerouslySetInnerHTML={{
-                  __html: hit._highlightResult.data.value,
-                }}
-              />
-            </div>
-          </span>
-          {image && image.id === hit.id && (
-            <img src={image.image} alt="image" style={{ maxWidth: '100%' }} />
-          )}
-          {hit._highlightResult.metadata.author && (
-            <>
-              <span>Author: </span>
-              <span
-                className="font-normal text-gray-500 underline hover:text-blue-600"
-                dangerouslySetInnerHTML={{
-                  __html: hit._highlightResult.metadata.author.value,
-                }}
-                onClick={() => {
-                  window.open(hit.metadata.author, '_blank');
-                }}
-              />
-              <br />
-            </>
-          )}
+    <div className="hit-container" onClick={handleClick}>
+      <div className="hit-content">
+        <div
+          className="hit-text"
+          dangerouslySetInnerHTML={{
+            __html: hit._highlightResult.data.value.replace(
+              /<em>/g, '<span class="hit-highlight">'
+            ).replace(/<\/em>/g, '</span>'),
+          }}
+        />
+        
+        {image && image.id === hit.id && (
+          <div className="result-image">
+            <img src={image.image} alt="Attachment" />
+          </div>
+        )}
+        
+        <div className="result-metadata">
           {hit._highlightResult.metadata.title && (
-            <>
-              <span>Title: </span>
+            <div className="result-meta-item">
+              <span className="result-meta-label">Title:</span>
               <span
-                className="font-normal text-gray-500"
+                className="result-meta-value"
                 dangerouslySetInnerHTML={{
                   __html: hit._highlightResult.metadata.title.value,
                 }}
               />
-            </>
+            </div>
           )}
-
-          {/* <div className="text-sm text-gray-500">
-            Created: {new Date(hit.created_at).toLocaleString()}
-            {hit.created_at !== hit.updated_at && (
-              <> | Last Updated: {new Date(hit.updated_at).toLocaleString()} </>
-            )}
-          </div> */}
+          
+          {hit._highlightResult.metadata.author && (
+            <div className="result-meta-item">
+              <span className="result-meta-label">Source:</span>
+              <a
+                className="result-meta-link"
+                href={hit.metadata.author}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                title={hit.metadata.author}
+              >
+                {(() => {
+                  try {
+                    const url = new URL(hit.metadata.author);
+                    return url.hostname.replace('www.', '');
+                  } catch {
+                    return hit.metadata.author.length > 30 
+                      ? hit.metadata.author.substring(0, 30) + '...' 
+                      : hit.metadata.author;
+                  }
+                })()}
+              </a>
+            </div>
+          )}
         </div>
       </div>
-      <hr className="my-4" />
     </div>
   );
 };
@@ -366,64 +365,63 @@ const Panel: React.FC = () => {
     };
 
     return (
-      <form
-        onSubmit={handleSubmit}
-        style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}
-      >
-        <input
-          type="text"
-          value={localQuery}
-          onChange={(e) => setLocalQuery(e.target.value)}
-          placeholder="Search YCB..."
-          style={{
-            flex: 1,
-            padding: '0.5rem',
-            borderRadius: '4px',
-            border: '1px solid #ccc',
-          }}
-        />
-        <button
-          type="submit"
-          disabled={isSearching || !localQuery.trim()}
-          style={{
-            padding: '0 1rem',
-            borderRadius: '4px',
-            background: isSearching ? '#666' : '#444',
-            color: 'white',
-            border: 'none',
-            cursor: isSearching ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {isSearching ? 'Searching...' : 'Search'}
-        </button>
-        {localQuery && (
+      <div className="search-container">
+        <form onSubmit={handleSubmit} className="search-box">
+          <input
+            type="text"
+            value={localQuery}
+            onChange={(e) => setLocalQuery(e.target.value)}
+            placeholder="Search your commonbase..."
+            className="search-input"
+          />
           <button
-            type="button"
-            onClick={() => {
-              setLocalQuery('');
-              setQuery('');
-              clearSemanticResults();
-            }}
-            style={{
-              padding: '0 0.5rem',
-              borderRadius: '4px',
-              background: '#eee',
-              border: '1px solid #ccc',
-              cursor: 'pointer',
-            }}
+            type="submit"
+            disabled={isSearching || !localQuery.trim()}
+            className="search-button"
           >
-            Clear
+            {isSearching && <div className="loading-spinner"></div>}
+            {isSearching ? 'Searching...' : 'Search'}
           </button>
-        )}
-      </form>
+          {localQuery && (
+            <button
+              type="button"
+              onClick={() => {
+                setLocalQuery('');
+                setQuery('');
+                clearSemanticResults();
+              }}
+              className="clear-button"
+            >
+              Clear
+            </button>
+          )}
+        </form>
+      </div>
     );
+  };
+
+  const handleSemanticResultClick = async (item: any) => {
+    const baseUrl = await getBaseUrl();
+    chrome.tabs.create({
+      url: `${baseUrl}/dashboard/entry/${item.id}`,
+    });
   };
 
   return (
     <div className="container">
-      <h1>Search YCB</h1>
-      {loadingSearch && <p>Loading...</p>}
-      {error && <div className="error">{error}</div>}
+      <div className="panel-header">
+        <h1 className="panel-title">Your Commonbase</h1>
+        <p className="panel-subtitle">Search from anywhere on your browser! Or, you can open your <a href="https://development.yourcommonbase.com/dashboard" target="_blank" rel="noopener noreferrer" style={{color: 'white'}}>dashboard</a> and search from there.</p>
+      </div>
+
+      {loadingSearch && (
+        <div className="loading-message">
+          <div className="loading-spinner"></div>
+          <span>Initializing search...</span>
+        </div>
+      )}
+
+      {error && <div className="error-message">{error}</div>}
 
       {/* Show appropriate search interface based on token availability */}
       {!loadingSearch && (
@@ -434,16 +432,8 @@ const Panel: React.FC = () => {
               {tokenError.includes(
                 'Unauthorized - move to search or synthesis to use this'
               ) && (
-                <div
-                  style={{
-                    marginBottom: '1rem',
-                    padding: '0.5rem',
-                  }}
-                >
-                  <span>
-                    For Search as You Type, go to the Companion and join the
-                    Search tier
-                  </span>
+                <div className="notice-message">
+                  For real-time search-as-you-type functionality, upgrade to the Search tier in your YCB dashboard.
                 </div>
               )}
             </>
@@ -452,175 +442,162 @@ const Panel: React.FC = () => {
               indexName="ycb_fts_staging"
               searchClient={searchClient}
             >
-              <CustomSearchBox
-                handleSearchManual={handleSearchManual}
-                clearSemanticResults={clearSemanticResults}
-                initialQuery={query}
-              />
-              <div className="results">
+              <div className="search-container">
+                <CustomSearchBox
+                  handleSearchManual={handleSearchManual}
+                  clearSemanticResults={clearSemanticResults}
+                  initialQuery={query}
+                />
+              </div>
+
+              <div className="results-section">
                 {loading && (
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      margin: '16px 0',
-                      color: '#ffffff',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: '16px',
-                        height: '16px',
-                        border: '2px solid #333',
-                        borderTop: '2px solid #fff',
-                        borderRadius: '50%',
-                        animation: 'spin 1s linear infinite',
-                      }}
-                    ></div>
+                  <div className="loading-message">
+                    <div className="loading-spinner"></div>
                     <span>Searching...</span>
                   </div>
                 )}
-                {results.length > 0 && <p>Results: {results.length}</p>}
+
+                {results.length > 0 && (
+                  <div className="results-header">
+                    <span className="results-count">
+                      {results.length} semantic {results.length === 1 ? 'result' : 'results'}
+                    </span>
+                  </div>
+                )}
 
                 {/* Semantic search results */}
                 {results.map((item) => (
-                  <div className="card" key={item.id}>
-                    <h4>{item.metadata?.title || 'No Title'}</h4>
-                    <p>Similarity: {item.similarity}</p>
-                    <p
-                      onClick={async (e) => {
-                        e.preventDefault();
-                        const baseUrl = await getBaseUrl();
-                        chrome.tabs.create({
-                          url: `${baseUrl}/dashboard/entry/${item.id}`,
-                        });
-                      }}
-                      style={{ color: 'white', textDecoration: 'underline' }}
-                    >
-                      {item.metadata?.ogDescription ||
-                        item.data ||
-                        'No Description'}
-                    </p>
-                    {item.metadata?.ogImages &&
-                      item.metadata.ogImages.length > 0 && (
-                        <img
-                          src={item.metadata.ogImages[0]}
-                          alt="og"
-                          style={{ maxWidth: '100%' }}
-                        />
-                      )}
-                    {item.metadata?.author && (
-                      <span
-                        className="font-normal text-gray-500 underline hover:text-blue-600"
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          const baseUrl = await getBaseUrl();
-                          chrome.tabs.create({
-                            url: `${baseUrl}/dashboard/entry/${item.id}`,
-                          });
-                        }}
-                      >
-                        Author Link
-                      </span>
+                  <div
+                    className="result-card"
+                    key={item.id}
+                    onClick={() => handleSemanticResultClick(item)}
+                  >
+                    <div className="result-similarity">
+                      {Math.round(item.similarity * 100)}% match
+                    </div>
+                    <h3 className="result-title">
+                      {item.metadata?.title || 'Untitled'}
+                    </h3>
+                    <div className="result-content">
+                      {item.metadata?.ogDescription || item.data || 'No description available'}
+                    </div>
+                    
+                    {item.metadata?.ogImages && item.metadata.ogImages.length > 0 && (
+                      <div className="result-image">
+                        <img src={item.metadata.ogImages[0]} alt="Preview" />
+                      </div>
                     )}
+                    
                     {item.image && (
-                      <>
-                        <p>Image:</p>
-                        <img
-                          src={item.image}
-                          alt=""
-                          style={{ maxWidth: '100%' }}
-                        />
-                      </>
+                      <div className="result-image">
+                        <img src={item.image} alt="Attachment" />
+                      </div>
                     )}
+                    
+                    <div className="result-metadata">
+                      {item.metadata?.author && (
+                        <div className="result-meta-item">
+                          <span className="result-meta-label">Source:</span>
+                          <span 
+                            className="result-meta-value" 
+                            title={item.metadata.author}
+                          >
+                            {(() => {
+                              try {
+                                const url = new URL(item.metadata.author);
+                                return url.hostname.replace('www.', '');
+                              } catch {
+                                return item.metadata.author.length > 30 
+                                  ? item.metadata.author.substring(0, 30) + '...' 
+                                  : item.metadata.author;
+                              }
+                            })()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
+
               <InfiniteHits hitComponent={Hit} />
             </InstantSearch>
           )}
         </>
       )}
 
-      {tokenError && (<div className="results">
-        {loading && (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              margin: '16px 0',
-              color: '#ffffff',
-            }}
-          >
-            <div
-              style={{
-                width: '16px',
-                height: '16px',
-                border: '2px solid #333',
-                borderTop: '2px solid #fff',
-                borderRadius: '50%',
-                animation: 'spin 1s linear infinite',
-              }}
-            ></div>
-            <span>Searching...</span>
-          </div>
-        )}
-        {results.length > 0 && <p>Results: {results.length}</p>}
+      {/* Semantic results for non-InstantSearch mode */}
+      {tokenError && (
+        <div className="results-section">
+          {loading && (
+            <div className="loading-message">
+              <div className="loading-spinner"></div>
+              <span>Searching...</span>
+            </div>
+          )}
 
-        {/* Semantic search results */}
-        {results.map((item) => (
-          <div className="card" key={item.id}>
-            <h4>{item.metadata?.title || 'No Title'}</h4>
-            <p>Similarity: {item.similarity}</p>
-            <p
-              onClick={async (e) => {
-                e.preventDefault();
-                const baseUrl = await getBaseUrl();
-                chrome.tabs.create({
-                  url: `${baseUrl}/dashboard/entry/${item.id}`,
-                });
-              }}
-              style={{ color: 'white', textDecoration: 'underline' }}
-            >
-              {item.metadata?.ogDescription || item.data || 'No Description'}
-            </p>
-            {item.metadata?.ogImages && item.metadata.ogImages.length > 0 && (
-              <img
-                src={item.metadata.ogImages[0]}
-                alt="og"
-                style={{ maxWidth: '100%' }}
-              />
-            )}
-            {item.metadata?.author && (
-              <span
-                className="font-normal text-gray-500 underline hover:text-blue-600"
-                onClick={async (e) => {
-                  e.preventDefault();
-                  const baseUrl = await getBaseUrl();
-                  chrome.tabs.create({
-                    url: `${baseUrl}/dashboard/entry/${item.id}`,
-                  });
-                }}
-              >
-                Author Link
+          {results.length > 0 && (
+            <div className="results-header">
+              <span className="results-count">
+                {results.length} semantic {results.length === 1 ? 'result' : 'results'}
               </span>
-            )}
-            {item.image && (
-              <>
-                <p>Image:</p>
-                <img src={item.image} alt="" style={{ maxWidth: '100%' }} />
-              </>
-            )}
-          </div>
-        ))}
-      </div>)}
+            </div>
+          )}
 
-      {tokenError && !loadingSearch && (
-        <span>
-          For Search as You Type, go to the Companion and join the Search tier
-        </span>
+          {results.map((item) => (
+            <div
+              className="result-card"
+              key={item.id}
+              onClick={() => handleSemanticResultClick(item)}
+            >
+              <div className="result-similarity">
+                {Math.round(item.similarity * 100)}% match
+              </div>
+              <h3 className="result-title">
+                {item.metadata?.title || 'Untitled'}
+              </h3>
+              <div className="result-content">
+                {item.metadata?.ogDescription || item.data || 'No description available'}
+              </div>
+              
+              {item.metadata?.ogImages && item.metadata.ogImages.length > 0 && (
+                <div className="result-image">
+                  <img src={item.metadata.ogImages[0]} alt="Preview" />
+                </div>
+              )}
+              
+              {item.image && (
+                <div className="result-image">
+                  <img src={item.image} alt="Attachment" />
+                </div>
+              )}
+              
+              <div className="result-metadata">
+                {item.metadata?.author && (
+                  <div className="result-meta-item">
+                    <span className="result-meta-label">Source:</span>
+                    <span 
+                      className="result-meta-value" 
+                      title={item.metadata.author}
+                    >
+                      {(() => {
+                        try {
+                          const url = new URL(item.metadata.author);
+                          return url.hostname.replace('www.', '');
+                        } catch {
+                          return item.metadata.author.length > 30 
+                            ? item.metadata.author.substring(0, 30) + '...' 
+                            : item.metadata.author;
+                        }
+                      })()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

@@ -406,10 +406,15 @@ function saveCroppedImage() {
       // Convert to data URL and send to background
       const croppedDataUrl = canvas.toDataURL('image/png');
       
+      // Get the comment from the textarea
+      const commentBox = document.getElementById('commentBox');
+      const comment = commentBox ? commentBox.value.trim() : '';
+      
       chrome.runtime.sendMessage({
         action: 'uploadCroppedScreenshot',
         imageData: croppedDataUrl,
-        tabInfo: originalTabInfo
+        tabInfo: originalTabInfo,
+        comment: comment // Include the optional comment
       }, (response) => {
         if (response && response.success) {
           window.close();

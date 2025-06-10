@@ -253,7 +253,7 @@ function captureScreenshotForCropping(tab) {
           url: chrome.runtime.getURL(`cropViewer.html?id=${screenshotId}`),
           type: 'popup',
           width: 900,
-          height: 700,
+          height: 800,
           focused: true
         });
       });
@@ -323,6 +323,9 @@ function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
           )
             .then((res) => {
               if (!res.ok) throw new Error('Upload failed');
+              return res.json();
+            })
+            .then((data) => {
               console.log('Screenshot uploaded');
               chrome.runtime.sendMessage({ action: 'setBadge' });
               
@@ -331,7 +334,7 @@ function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
                 showToast(tabInfo.id, 'Screenshot saved to YCB successfully!', 'success');
               }
               
-              resolve();
+              resolve(data); // Return the response data including the ID
             })
             .catch((err) => {
               console.error('Error uploading screenshot:', err);
@@ -346,6 +349,46 @@ function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
         });
       })
       .catch(reject);
+  });
+}
+
+// Function to add a comment linked to a screenshot
+function addCommentToScreenshot(apiKey, comment, tabInfo, parentId) {
+  return new Promise((resolve, reject) => {
+    if (!parentId) {
+      reject(new Error('No parent ID provided for comment'));
+      return;
+    }
+
+    getBaseUrl((baseUrl) => {
+      fetch(`${baseUrl}/backend/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          data: comment,
+          metadata: {
+            title: `Comment on screenshot: ${tabInfo.title}`,
+            author: tabInfo.url,
+          },
+          parent_id: parentId,
+        }),
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error('Comment upload failed');
+          return res.json();
+        })
+        .then((data) => {
+          console.log('Comment added to screenshot');
+          resolve(data);
+        })
+        .catch((err) => {
+          console.error('Error adding comment to screenshot:', err);
+          reject(err);
+        });
+    });
   });
 }
 
@@ -377,9 +420,29 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         })
           .then((res) => {
             if (!res.ok) throw new Error('Upload failed');
-            console.log('URL uploaded');
-            chrome.runtime.sendMessage({ action: 'setBadge' });
-            showToast(tab.id, 'URL saved to YCB successfully!', 'success');
+            return res.json();
+          })
+          .then((data) => {
+            if (data.isDuplicate) {
+              console.log('URL is duplicate, showing comment modal');
+              // Inject the modal script with the duplicate URL's ID as parent
+              chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                function: openModal,
+                args: [
+                  apiKey,
+                  baseUrl, // Using baseUrl as cbUrl since they're equivalent in this context
+                  `Comment on: ${url}`,
+                  url,
+                  data.id, // Use the returned ID as parent_id
+                  '', // Empty default text
+                ],
+              });
+            } else {
+              console.log('URL uploaded successfully');
+              chrome.runtime.sendMessage({ action: 'setBadge' });
+              showToast(tab.id, 'URL saved to YCB successfully!', 'success');
+            }
           })
           .catch((err) => {
             console.error('Error uploading URL:', err);
@@ -1291,7 +1354,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }, 5000);
   } else if (message.action === 'uploadCroppedScreenshot') {
     // Handle cropped screenshot upload
-    const { imageData, tabInfo } = message;
+    const { imageData, tabInfo, comment } = message;
     
     chrome.storage.local.get(['apiKey'], (result) => {
       const apiKey = result.apiKey;
@@ -1303,8 +1366,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       try {
         uploadScreenshot(imageData, tabInfo, apiKey, `Area screenshot of ${tabInfo.title}`)
-          .then(() => {
-            sendResponse({ success: true });
+          .then((screenshotResponse) => {
+            // If there's a comment, add it as a linked entry
+            if (comment && comment.trim()) {
+              // Get the screenshot ID from the response (assuming uploadScreenshot returns the response)
+              // We'll need to modify uploadScreenshot to return the response data
+              addCommentToScreenshot(apiKey, comment, tabInfo, screenshotResponse?.id)
+                .then(() => {
+                  sendResponse({ success: true });
+                })
+                .catch((error) => {
+                  console.error('Failed to add comment, but screenshot uploaded:', error);
+                  sendResponse({ success: true }); // Still consider it success since screenshot uploaded
+                });
+            } else {
+              sendResponse({ success: true });
+            }
           })
           .catch((error) => {
             sendResponse({ success: false, error: error.message });

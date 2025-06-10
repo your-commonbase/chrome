@@ -128,49 +128,25 @@ function CustomSearchBox({ handleSearchManual, clearSemanticResults, initialQuer
   };
 
   return (
-    <div style={{ display: 'flex', gap: '0.5rem' }}>
+    <div className="search-box">
       <input
         ref={inputRef}
         type="text"
         value={localQuery}
         onChange={onInputChange}
-        placeholder="Search"
+        placeholder="Search your knowledge base..."
         tabIndex={1}
         autoFocus={false}
-        style={{
-          flex: 1,
-          padding: '0.5rem',
-          borderRadius: '4px',
-          border: '1px solid #ccc',
-        }}
+        className="search-input"
       />
       <button
         type="button"
         onClick={onSearchClick}
         disabled={isSearching}
-        style={{
-          padding: '0 1rem',
-          borderRadius: '4px',
-          background: isSearching ? '#666' : '#444',
-          color: 'white',
-          border: 'none',
-          cursor: isSearching ? 'not-allowed' : 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '4px',
-        }}
+        className="search-button"
       >
-        {isSearching && (
-          <div style={{
-            width: '12px',
-            height: '12px',
-            border: '1px solid #333',
-            borderTop: '1px solid #fff',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite'
-          }}></div>
-        )}
-        {isSearching ? 'searching...' : 'search'}
+        {isSearching && <div className="loading-spinner"></div>}
+        {isSearching ? 'Searching...' : 'Search'}
       </button>
       {localQuery && (
         <button
@@ -183,15 +159,9 @@ function CustomSearchBox({ handleSearchManual, clearSemanticResults, initialQuer
               clearSemanticResults();
             }
           }}
-          style={{
-            padding: '0 0.5rem',
-            borderRadius: '4px',
-            background: '#eee',
-            border: '1px solid #ccc',
-            cursor: 'pointer',
-          }}
+          className="clear-button"
         >
-          clear
+          Clear
         </button>
       )}
     </div>

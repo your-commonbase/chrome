@@ -139,6 +139,45 @@
             color: #ff6b6b;
             font-size: 16px;
         }
+        
+        .comment-section {
+            margin-top: 20px;
+            padding: 0 10px;
+        }
+        
+        .comment-label {
+            display: block;
+            color: #ccc;
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .comment-input {
+            width: 100%;
+            background: #1a1a1a;
+            border: 2px solid #444;
+            border-radius: 8px;
+            color: white;
+            padding: 12px;
+            font-family: inherit;
+            font-size: 14px;
+            line-height: 1.5;
+            resize: vertical;
+            min-height: 60px;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        
+        .comment-input:focus {
+            outline: none;
+            border-color: #007bff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+        }
+        
+        .comment-input::placeholder {
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -156,6 +195,16 @@
     
     <div class="crop-container" id="cropContainer">
         <div class="loading" id="loading">Loading screenshot...</div>
+    </div>
+    
+    <div class="comment-section">
+        <label for="commentBox" class="comment-label">Add an optional comment:</label>
+        <textarea 
+            id="commentBox" 
+            class="comment-input" 
+            placeholder="Describe what this screenshot shows or why you're saving it..."
+            rows="3"
+        ></textarea>
     </div>
 
 </body>
