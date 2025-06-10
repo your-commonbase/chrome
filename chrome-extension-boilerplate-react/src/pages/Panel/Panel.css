@@ -226,6 +226,31 @@ body {
   color: #ffffff;
 }
 
+.google-search-button {
+  padding: 12px 16px;
+  background: #ea4335;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.google-search-button:hover {
+  background: #d73527;
+  transform: translateY(-1px);
+}
+
+.google-search-button svg {
+  flex-shrink: 0;
+}
+
 /* Loading States */
 .loading-message {
   display: flex;

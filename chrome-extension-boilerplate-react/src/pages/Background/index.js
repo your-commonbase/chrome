@@ -253,7 +253,7 @@ function captureScreenshotForCropping(tab) {
           url: chrome.runtime.getURL(`cropViewer.html?id=${screenshotId}`),
           type: 'popup',
           width: 900,
-          height: 700,
+          height: 1000,
           focused: true
         });
       });
@@ -352,6 +352,73 @@ function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
   });
 }
 
+// TODO screenshot comment Function to poll for object metadata
+function pollForMetadata(apiKey, platformId, maxAttempts = 10, intervalMs = 2000) {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    
+    const poll = async () => {
+      attempts++;
+      console.log(`Polling for metadata, attempt ${attempts}/${maxAttempts}`);
+      
+      try {
+        const baseUrl = await new Promise((res) => {
+          getBaseUrl((url) => res(url));
+        });
+        
+        const response = await fetch(`${baseUrl}/backend/fetch`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            platformId: platformId
+          }),
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Fetch failed with status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log(`Polling response:`, data);
+        
+        // Check if metadata exists
+        if (data && data.metadata) {
+          console.log('Metadata found:', data.metadata);
+          resolve(data);
+          return;
+        }
+        
+        // If no metadata and we've reached max attempts, fail
+        if (attempts >= maxAttempts) {
+          reject(new Error(`Metadata not found after ${maxAttempts} attempts (${maxAttempts * intervalMs / 1000}s)`));
+          return;
+        }
+        
+        // Schedule next attempt
+        setTimeout(poll, intervalMs);
+        
+      } catch (error) {
+        console.error(`Polling attempt ${attempts} failed:`, error);
+        
+        // If we've reached max attempts, fail
+        if (attempts >= maxAttempts) {
+          reject(new Error(`Polling failed after ${maxAttempts} attempts: ${error.message}`));
+          return;
+        }
+        
+        // Schedule next attempt
+        setTimeout(poll, intervalMs);
+      }
+    };
+    
+    // Start polling immediately
+    poll();
+  });
+}
+
 // Function to add a comment linked to a screenshot
 function addCommentToScreenshot(apiKey, comment, tabInfo, parentId) {
   return new Promise((resolve, reject) => {
@@ -359,6 +426,9 @@ function addCommentToScreenshot(apiKey, comment, tabInfo, parentId) {
       reject(new Error('No parent ID provided for comment'));
       return;
     }
+
+   
+
 
     getBaseUrl((baseUrl) => {
       fetch(`${baseUrl}/backend/add`, {
@@ -378,6 +448,7 @@ function addCommentToScreenshot(apiKey, comment, tabInfo, parentId) {
       })
         .then((res) => {
           if (!res.ok) throw new Error('Comment upload failed');
+          console.log(res);
           return res.json();
         })
         .then((data) => {
@@ -1595,28 +1666,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       try {
+        console.log('Uploading cropped screenshot with comment:', comment);
         uploadScreenshot(imageData, tabInfo, apiKey, `Area screenshot of ${tabInfo.title}`)
           .then((screenshotResponse) => {
-            // If there's a comment, add it as a linked entry
+            console.log('Screenshot upload response:', screenshotResponse);
+            
+            // Always send success response immediately to close the window
+            sendResponse({ success: true });
+            
+            // If there's a comment, add it as a linked entry in the background
             if (comment && comment.trim()) {
-              // Get the screenshot ID from the response (assuming uploadScreenshot returns the response)
-              // We'll need to modify uploadScreenshot to return the response data
-              addCommentToScreenshot(apiKey, comment, tabInfo, screenshotResponse?.id)
-                .then(() => {
-                  sendResponse({ success: true });
-                })
-                .catch((error) => {
-                  console.error('Failed to add comment, but screenshot uploaded:', error);
-                  sendResponse({ success: true }); // Still consider it success since screenshot uploaded
-                });
+              console.log('Adding comment to screenshot with parent ID:', screenshotResponse?.id);
+              console.log('Window can now close - comment will be processed in background');
+              
+              // Process comment in background after delay
+              setTimeout(() => {
+                addCommentToScreenshot(apiKey, comment, tabInfo, screenshotResponse?.id)
+                  .then((commentResponse) => {
+                    console.log('Comment added successfully in background:', commentResponse);
+                    // Optionally show a toast notification that comment was added
+                    if (tabInfo.id) {
+                      showToast(tabInfo.id, 'Screenshot comment added successfully!', 'success');
+                    }
+                  })
+                  .catch((error) => {
+                    console.error('Failed to add comment in background:', error);
+                    // Optionally show error toast
+                    if (tabInfo.id) {
+                      showToast(tabInfo.id, 'Failed to add screenshot comment', 'error');
+                    }
+                  });
+              }, 60000);
             } else {
-              sendResponse({ success: true });
+              console.log('No comment provided, screenshot upload complete');
             }
           })
           .catch((error) => {
+            console.error('Screenshot upload failed:', error);
             sendResponse({ success: false, error: error.message });
           });
       } catch (error) {
+        console.error('Error in uploadCroppedScreenshot handler:', error);
         sendResponse({ success: false, error: error.message });
       }
     });

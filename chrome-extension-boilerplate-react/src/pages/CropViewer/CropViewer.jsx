@@ -410,20 +410,18 @@ function saveCroppedImage() {
       const commentBox = document.getElementById('commentBox');
       const comment = commentBox ? commentBox.value.trim() : '';
       
+      console.log('Sending cropped screenshot with comment:', comment);
+      console.log('Tab info:', originalTabInfo);
+      
       chrome.runtime.sendMessage({
         action: 'uploadCroppedScreenshot',
         imageData: croppedDataUrl,
         tabInfo: originalTabInfo,
         comment: comment // Include the optional comment
-      }, (response) => {
-        if (response && response.success) {
-          window.close();
-        } else {
-          showError('Failed to save screenshot: ' + (response?.error || 'Unknown error'));
-          saveBtn.disabled = false;
-          saveBtn.textContent = 'Save to YCB';
-        }
       });
+      
+      // Close window immediately - background processing will continue
+      window.close();
     };
     
     originalImg.onerror = () => {
