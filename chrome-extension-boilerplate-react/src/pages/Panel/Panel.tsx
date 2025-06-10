@@ -194,6 +194,10 @@ const Panel: React.FC = () => {
   const [quickAddText, setQuickAddText] = useState<string>('');
   const [isQuickAdding, setIsQuickAdding] = useState<boolean>(false);
   const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
+  const [randomRecord, setRandomRecord] = useState<any>(null);
+  const [randomRecordImage, setRandomRecordImage] = useState<string | null>(null);
+  const [storyKey, setStoryKey] = useState<number>(0); // Key to restart CSS animation
+  const [isLoadingRandomRecord, setIsLoadingRandomRecord] = useState<boolean>(false);
 
   const getToken = async (token: string) => {
     const baseUrl = await getBaseUrl();
@@ -428,7 +432,7 @@ const Panel: React.FC = () => {
             type="text"
             value={localQuery}
             onChange={(e) => setLocalQuery(e.target.value)}
-            placeholder="Search your commonbase..."
+            placeholder="Find anything you've ever saved..."
             className="search-input"
           />
           <button
@@ -628,18 +632,149 @@ const Panel: React.FC = () => {
     }
   };
 
+  const fetchRandomRecord = async () => {
+    setIsLoadingRandomRecord(true);
+    
+    try {
+      // Get API key from storage
+      const result = await new Promise<{apiKey?: string}>((resolve) => {
+        chrome.storage.local.get(['apiKey'], resolve);
+      });
+
+      if (!result.apiKey) {
+        console.log('No API key found for random record fetch');
+        return;
+      }
+
+      const baseUrl = await getBaseUrl();
+      const response = await fetch(`${baseUrl}/backend/random`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${result.apiKey}`,
+        },
+        body: JSON.stringify({
+          count: 1,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch random record');
+      }
+
+      const data = await response.json();
+      if (data && data.length > 0) {
+        const record = data[0];
+        setRandomRecord(record);
+        
+        // If it's an image record, fetch the image
+        if (record.metadata?.type === 'image') {
+          const imageData = await fetchImage(record.id);
+          setRandomRecordImage(imageData?.image || null);
+        } else {
+          setRandomRecordImage(null);
+        }
+        
+        // Reset CSS animation by changing key
+        setStoryKey(prev => prev + 1);
+      }
+    } catch (error) {
+      console.error('Error fetching random record:', error);
+    } finally {
+      setIsLoadingRandomRecord(false);
+    }
+  };
+
+  // Initialize random record and set up 30-second cycle
+  useEffect(() => {
+    fetchRandomRecord(); // Initial fetch
+    
+    const interval = setInterval(() => {
+      fetchRandomRecord();
+    }, 30000); // Every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  // No more JavaScript progress bar animation - using pure CSS instead
+
+  const handleRandomRecordClick = async () => {
+    if (!randomRecord) return;
+    
+    const baseUrl = await getBaseUrl();
+    chrome.tabs.create({
+      url: `${baseUrl}/dashboard/entry/${randomRecord.id}`,
+    });
+  };
+
   return (
     <div className="container">
       <div className="panel-header">
         <h1 className="panel-title">Your Commonbase</h1>
-        <p className="panel-subtitle">Search from anywhere on your browser! Or, you can open your <a href="https://development.yourcommonbase.com/dashboard" target="_blank" rel="noopener noreferrer" style={{color: 'white'}}>dashboard</a> and search from there.</p>
+        <p className="panel-subtitle">Search from anywhere on your browser! Or, you can open your <a href="https://development.yourcommonbase.com/dashboard" target="_blank" rel="noopener noreferrer" style={{color: 'white'}}>Companion from here!</a></p>
+        
+        {/* Random Record Story */}
+        {randomRecord && (
+          <div className="random-story-container" key={storyKey}>
+            <div className="story-progress-bar">
+              <div className="story-progress-fill"></div>
+            </div>
+            <div 
+              className="story-content"
+              onClick={handleRandomRecordClick}
+            >
+              {isLoadingRandomRecord ? (
+                <div className="story-loading">
+                  <div className="loading-spinner"></div>
+                  <span>Loading random record...</span>
+                </div>
+              ) : (
+                <>
+                  {randomRecordImage && (
+                    <div className="story-image">
+                      <img src={randomRecordImage} alt="Random record" />
+                    </div>
+                  )}
+                  <div className="story-text">
+                    <h4 className="story-title">
+                      {randomRecord.metadata?.title || 'Untitled'}
+                    </h4>
+                    <p className="story-data">
+                      {randomRecord.data?.length > 150 
+                        ? randomRecord.data.substring(0, 150) + '...' 
+                        : randomRecord.data || 'No content available'}
+                    </p>
+                    {randomRecord.metadata?.author && (
+                      <span className="story-source">
+                        {(() => {
+                          try {
+                            const url = randomRecord.metadata.author;
+                            if (url.includes('yourcommonbase.com')) {
+                              return 'Your Commonbase';
+                            }
+                            const urlObj = new URL(url);
+                            return urlObj.hostname.replace('www.', '');
+                          } catch {
+                            return randomRecord.metadata.author.length > 25 
+                              ? randomRecord.metadata.author.substring(0, 25) + '...' 
+                              : randomRecord.metadata.author;
+                          }
+                        })()}
+                      </span>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
         
         {/* Quick Add Input */}
         <div className="quick-add-container">
           <div className="quick-add-input-group">
             <textarea
               className="quick-add-input"
-              placeholder="Add text to YCB..."
+              placeholder="What are you thinking about?"
               value={quickAddText}
               onChange={(e) => setQuickAddText(e.target.value)}
               rows={2}
@@ -692,7 +827,7 @@ const Panel: React.FC = () => {
                     <circle cx="8.5" cy="8.5" r="1.5"/>
                     <polyline points="21,15 16,10 5,21"/>
                   </svg>
-                  Add Image to YCB
+                  Take a Picture, It'll Last Longer
                 </>
               )}
             </button>

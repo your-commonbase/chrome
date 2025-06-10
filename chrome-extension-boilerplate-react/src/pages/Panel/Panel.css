@@ -41,6 +41,133 @@ body {
   font-weight: 400;
 }
 
+/* Random Story Styles */
+.random-story-container {
+  margin: 16px 0 24px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.3s ease;
+  animation: fadeIn 0.5s ease;
+  /* Isolate the component to prevent layout shifts */
+  contain: layout style paint;
+  will-change: transform;
+  transform: translateZ(0); /* Force GPU acceleration */
+}
+
+.random-story-container:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px) translateZ(0);
+}
+
+.story-progress-bar {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  width: 100%;
+  position: relative;
+  /* Prevent the progress bar from affecting other elements */
+  contain: strict;
+  overflow: hidden;
+}
+
+.story-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  border-radius: 0 3px 3px 0;
+  width: 0%;
+  /* Pure CSS animation - no JavaScript state updates */
+  animation: progressFill 30s linear forwards;
+  transform: translateZ(0);
+}
+
+@keyframes progressFill {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.story-content {
+  padding: 16px;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.story-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  justify-content: center;
+  width: 100%;
+  padding: 20px 0;
+}
+
+.story-image {
+  flex-shrink: 0;
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.story-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.story-content:hover .story-image img {
+  transform: scale(1.05);
+}
+
+.story-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.story-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 6px 0;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.story-data {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.story-source {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 500;
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
 /* Quick Add Styles */
 .quick-add-container {
   margin-top: 16px;
