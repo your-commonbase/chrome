@@ -253,7 +253,7 @@ function captureScreenshotForCropping(tab) {
           url: chrome.runtime.getURL(`cropViewer.html?id=${screenshotId}`),
           type: 'popup',
           width: 900,
-          height: 800,
+          height: 700,
           focused: true
         });
       });
@@ -860,36 +860,184 @@ function openModal(
   parentId,
   defaultText = ''
 ) {
-  // Create a modal element
+  // Remove existing modal if it exists
+  const existingOverlay = document.getElementById('ycb-modal-overlay');
+  if (existingOverlay) {
+    existingOverlay.remove();
+  }
+
+  // Create modal overlay
+  const overlay = document.createElement('div');
+  overlay.id = 'ycb-modal-overlay';
+  overlay.style.cssText = `
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: rgba(0, 0, 0, 0.7) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 999999 !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    animation: ycb-fadeIn 0.2s ease !important;
+  `;
+
+  // Create modal content
   const modal = document.createElement('div');
   modal.id = 'ycb-comment-modal';
-  modal.style.position = 'fixed';
-  modal.style.top = '50%';
-  modal.style.left = '50%';
-  modal.style.transform = 'translate(-50%, -50%)';
-  modal.style.backgroundColor = 'white';
-  modal.style.padding = '20px';
-  modal.style.boxShadow = '0 0 10px rgba(0, 0, 0, 0.5)';
-  modal.style.zIndex = '1000';
+  modal.style.cssText = `
+    background: #2a2a2a !important;
+    border-radius: 12px !important;
+    padding: 24px !important;
+    width: 100% !important;
+    max-width: 500px !important;
+    max-height: 80vh !important;
+    overflow-y: auto !important;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2) !important;
+    color: #ffffff !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif !important;
+    font-size: 14px !important;
+    line-height: 1.5 !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    border: none !important;
+    outline: none !important;
+    text-decoration: none !important;
+    position: relative !important;
+    animation: ycb-slideIn 0.3s ease !important;
+  `;
 
-  // add a href to dashboard/entry/{parentId}
+  // Add CSS animations
+  if (!document.getElementById('ycb-modal-styles')) {
+    const style = document.createElement('style');
+    style.id = 'ycb-modal-styles';
+    style.textContent = `
+      @keyframes ycb-fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes ycb-slideIn {
+        from { transform: translateY(-20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Create modal title
+  const title = document.createElement('h3');
+  title.style.cssText = `
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    color: #ffffff !important;
+    margin: 0 0 8px 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    font-family: inherit !important;
+    line-height: 1.4 !important;
+  `;
+  title.textContent = 'Add Comment';
+
+  // Create subtitle
+  const subtitle = document.createElement('p');
+  subtitle.style.cssText = `
+    font-size: 14px !important;
+    color: rgba(255, 255, 255, 0.7) !important;
+    margin: 0 0 16px 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    font-family: inherit !important;
+    line-height: 1.5 !important;
+  `;
+  subtitle.textContent = `Commenting on: ${tabTitle}`;
+
+  // Create view link
+  const viewContainer = document.createElement('div');
+  viewContainer.style.cssText = `
+    margin: 0 0 16px 0 !important;
+    padding: 0 !important;
+    border: none !important;
+  `;
+
+  // Create text box
+  const textBox = document.createElement('textarea');
+  textBox.style.cssText = `
+    width: 100% !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 8px !important;
+    color: #ffffff !important;
+    padding: 12px !important;
+    font-family: inherit !important;
+    font-size: 14px !important;
+    line-height: 1.5 !important;
+    resize: vertical !important;
+    min-height: 100px !important;
+    box-sizing: border-box !important;
+    transition: border-color 0.2s !important;
+    margin: 0 0 20px 0 !important;
+    outline: none !important;
+  `;
+  textBox.placeholder = 'Add your comment...';
+  textBox.value = defaultText;
+
+  // Focus styles for textarea
+  textBox.addEventListener('focus', () => {
+    textBox.style.borderColor = '#3b82f6 !important';
+    textBox.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1) !important';
+  });
+  textBox.addEventListener('blur', () => {
+    textBox.style.borderColor = 'rgba(255, 255, 255, 0.15) !important';
+    textBox.style.boxShadow = 'none !important';
+  });
+
+  // Prevent clicks on modal content from closing the modal
+  modal.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
+  // Close modal when clicking overlay
+  overlay.addEventListener('click', () => {
+    overlay.remove();
+    const styles = document.getElementById('ycb-modal-styles');
+    if (styles) styles.remove();
+  });
+
+  // Add view link after getting base URL
   chrome.storage.local.get(['baseUrl'], (result) => {
     const baseUrl = result.baseUrl || 'https://development.yourcommonbase.com';
     const href = `${baseUrl}/dashboard/entry/${parentId}`;
     const a = document.createElement('a');
+    a.style.cssText = `
+      color: #60a5fa !important;
+      text-decoration: none !important;
+      font-size: 14px !important;
+      font-family: inherit !important;
+      transition: color 0.2s ease !important;
+      display: inline-block !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: none !important;
+      background: none !important;
+    `;
     a.href = href;
     a.target = '_blank';
-    a.textContent = 'View in YCB Companion';
-    modal.appendChild(a);
+    a.textContent = 'View in YCB Dashboard';
+    a.addEventListener('mouseover', () => {
+      a.style.color = '#3b82f6 !important';
+      a.style.textDecoration = 'underline !important';
+    });
+    a.addEventListener('mouseout', () => {
+      a.style.color = '#60a5fa !important';
+      a.style.textDecoration = 'none !important';
+    });
+    viewContainer.appendChild(a);
   });
-
-  // Create a text box
-  const textBox = document.createElement('textarea');
-  textBox.type = 'text';
-  textBox.placeholder = 'Add a comment...';
-  textBox.style.width = '100%';
-  textBox.style.height = '100px';
-  textBox.value = defaultText; // <-- pre-fill with defaultText
 
   async function addComment(
     apiKey,
@@ -992,109 +1140,191 @@ function openModal(
     return data;
   }
 
-  // Append the text box to the modal
-  modal.appendChild(textBox);
+  // Create button container
+  const buttonContainer = document.createElement('div');
+  buttonContainer.style.cssText = `
+    display: flex !important;
+    gap: 12px !important;
+    justify-content: flex-end !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+  `;
 
-  // Append the modal to the body
-  document.body.appendChild(modal);
-
-  // Close the modal when clicking outside of it
-  // window.addEventListener('click', (event) => {
-  //   if (event.target === modal) {
-  //     document.body.removeChild(modal);
-  //   }
-  // });
-
-  // escape key to close modal
-  // document.addEventListener('keydown', (event) => {
-  //   if (event.key === 'Escape') {
-  //     const modal = document.getElementById('ycb-comment-modal');
-  //     if (modal && modal.parentNode) {
-  //       document.body.removeChild(modal);
-  //     }
-  //   }
-  // });
-
-  // Focus the text box when the modal is opened
-  textBox.focus();
-
-  // add a button to submit the form
+  // Create submit button
   const submitButton = document.createElement('button');
-  submitButton.textContent = 'Submit';
-  submitButton.style.marginTop = '10px';
-  submitButton.addEventListener('click', async () => {
-    // Get the text from the text box
-    const text = textBox.value;
+  submitButton.style.cssText = `
+    padding: 10px 20px !important;
+    background: #3b82f6 !important;
+    border: none !important;
+    border-radius: 8px !important;
+    color: white !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    font-family: inherit !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    margin: 0 !important;
+    outline: none !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+  `;
+  submitButton.textContent = 'Add Comment';
 
-    // Send the text to the background script
-    console.log('Submitting comment:', text);
-
-    // change button text to 'Submitting...'
-    submitButton.textContent = 'Submitting...';
-    submitButton.disabled = true;
-
-    // add comment
-    const commentRes = await addComment(
-      apiKey,
-      cbUrl,
-      text,
-      tabTitle,
-      tabUrl,
-      parentId
-    );
-    // const commentId = commentRes.id;
-    // console.log('Comment added:', commentRes);
-
-    // get parent by id
-    // const parent = await getParentByID(apiKey, cbUrl, parentId);
-    // console.log('Parent found:', parent);
-
-    // if (parent) {
-    //   let metadata = parent.metadata;
-    //   try {
-    //     metadata = JSON.parse(parent.metadata);
-    //   } catch (e) {
-    //     console.log('Error parsing metadata:', e);
-    //   }
-    //   // append commentID to parent.metadata.alias_ids[] or create new array if it doesn't exist
-    //   const newAliasIds = metadata.alias_ids || [];
-    //   newAliasIds.push(commentId);
-    //   metadata.alias_ids = newAliasIds;
-    //   parent.metadata = JSON.stringify(metadata);
-
-    //   console.log('Parent updated:', parent);
-
-    //   // update parent id
-    //   const updateRes = await updateParentId(
-    //     apiKey,
-    //     cbUrl,
-    //     parent.data,
-    //     metadata,
-    //     parent.id
-    //   );
-    //   console.log('Parent updated:', updateRes);
-    // }
-
-    // // change button text back to 'Submit'
-    // submitButton.textContent = 'Submit';
-    // submitButton.disabled = false;
-
-    // // reset text box
-    // textBox.value = '';
-
-    // close the modal
-    document.body.removeChild(modal);
+  // Submit button hover effect
+  submitButton.addEventListener('mouseover', () => {
+    if (!submitButton.disabled) {
+      submitButton.style.background = '#2563eb !important';
+    }
   });
-  modal.appendChild(submitButton);
+  submitButton.addEventListener('mouseout', () => {
+    if (!submitButton.disabled) {
+      submitButton.style.background = '#3b82f6 !important';
+    }
+  });
 
-  // close button
+  // Create close button
   const closeButton = document.createElement('button');
-  closeButton.textContent = 'Close';
-  closeButton.style.marginTop = '10px';
-  closeButton.addEventListener('click', () => {
-    document.body.removeChild(modal);
+  closeButton.style.cssText = `
+    padding: 10px 20px !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    border-radius: 8px !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    font-family: inherit !important;
+    margin: 0 !important;
+    outline: none !important;
+    text-decoration: none !important;
+    box-sizing: border-box !important;
+  `;
+  closeButton.textContent = 'Cancel';
+
+  // Close button hover effect
+  closeButton.addEventListener('mouseover', () => {
+    closeButton.style.background = 'rgba(255, 255, 255, 0.15) !important';
+    closeButton.style.color = '#ffffff !important';
   });
-  modal.appendChild(closeButton);
+  closeButton.addEventListener('mouseout', () => {
+    closeButton.style.background = 'rgba(255, 255, 255, 0.1) !important';
+    closeButton.style.color = 'rgba(255, 255, 255, 0.8) !important';
+  });
+
+  // Submit button click handler
+  submitButton.addEventListener('click', async () => {
+    const text = textBox.value.trim();
+    
+    if (!text) {
+      // Show error state briefly
+      textBox.style.borderColor = '#ef4444 !important';
+      setTimeout(() => {
+        textBox.style.borderColor = 'rgba(255, 255, 255, 0.15) !important';
+      }, 2000);
+      return;
+    }
+
+    // Disable button and show loading state
+    submitButton.disabled = true;
+    submitButton.style.background = 'rgba(255, 255, 255, 0.1) !important';
+    submitButton.style.cursor = 'not-allowed !important';
+    submitButton.innerHTML = `
+      <div style="
+        width: 14px !important;
+        height: 14px !important;
+        border: 2px solid rgba(255, 255, 255, 0.2) !important;
+        border-top: 2px solid #ffffff !important;
+        border-radius: 50% !important;
+        animation: ycb-spin 1s linear infinite !important;
+        margin-right: 6px !important;
+      "></div>
+      Adding...
+    `;
+
+    // Add spin animation if not already added
+    if (!document.getElementById('ycb-spin-styles')) {
+      const spinStyle = document.createElement('style');
+      spinStyle.id = 'ycb-spin-styles';
+      spinStyle.textContent = `
+        @keyframes ycb-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `;
+      document.head.appendChild(spinStyle);
+    }
+
+    try {
+      await addComment(apiKey, cbUrl, text, tabTitle, tabUrl, parentId);
+      // Close modal on success
+      overlay.remove();
+      const styles = document.getElementById('ycb-modal-styles');
+      if (styles) styles.remove();
+      const spinStyles = document.getElementById('ycb-spin-styles');
+      if (spinStyles) spinStyles.remove();
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      // Reset button on error
+      submitButton.disabled = false;
+      submitButton.style.background = '#3b82f6 !important';
+      submitButton.style.cursor = 'pointer !important';
+      submitButton.textContent = 'Add Comment';
+      
+      // Show error state
+      textBox.style.borderColor = '#ef4444 !important';
+      setTimeout(() => {
+        textBox.style.borderColor = 'rgba(255, 255, 255, 0.15) !important';
+      }, 3000);
+    }
+  });
+
+  // Close button click handler
+  closeButton.addEventListener('click', () => {
+    overlay.remove();
+    const styles = document.getElementById('ycb-modal-styles');
+    if (styles) styles.remove();
+  });
+
+  // Escape key to close modal
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      overlay.remove();
+      const styles = document.getElementById('ycb-modal-styles');
+      if (styles) styles.remove();
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
+
+  // Ctrl+Enter to submit
+  textBox.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      submitButton.click();
+    }
+  });
+
+  // Append elements to modal
+  modal.appendChild(title);
+  modal.appendChild(subtitle);
+  modal.appendChild(viewContainer);
+  modal.appendChild(textBox);
+  
+  buttonContainer.appendChild(closeButton);
+  buttonContainer.appendChild(submitButton);
+  modal.appendChild(buttonContainer);
+
+  // Append modal to overlay and overlay to body
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  // Focus the text box
+  setTimeout(() => textBox.focus(), 100);
 }
 
 async function callOpenAI(

@@ -13,6 +13,15 @@ const getBaseUrl = (): Promise<string> => {
   });
 };
 
+// Helper function to resolve URLs that might start with "/"
+const resolveUrl = async (url: string): Promise<string> => {
+  if (url.startsWith('/')) {
+    const baseUrl = await getBaseUrl();
+    return `${baseUrl}${url}`;
+  }
+  return url;
+};
+
 const fetchImage = async (id: string): Promise<any | undefined> => {
   return new Promise((resolve, reject) => {
     chrome.storage.local.get(['apiKey'], async (result) => {
@@ -45,8 +54,9 @@ const fetchImage = async (id: string): Promise<any | undefined> => {
   });
 };
 
-const Hit = ({ hit, closeModalFn }: any) => {
+const Hit = ({ hit, onAddComment }: any) => {
   const [image, setImage] = useState<any | undefined>(undefined);
+  const [resolvedAuthorUrl, setResolvedAuthorUrl] = useState<string>('');
 
   useEffect(() => {
     const fetchAndSetImage = async () => {
@@ -64,6 +74,16 @@ const Hit = ({ hit, closeModalFn }: any) => {
     fetchImage,
   ]);
 
+  useEffect(() => {
+    const resolveAuthorUrl = async () => {
+      if (hit.metadata.author) {
+        const resolved = await resolveUrl(hit.metadata.author);
+        setResolvedAuthorUrl(resolved);
+      }
+    };
+    resolveAuthorUrl();
+  }, [hit.metadata.author]);
+
   const handleClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     const baseUrl = await getBaseUrl();
@@ -73,8 +93,8 @@ const Hit = ({ hit, closeModalFn }: any) => {
   };
 
   return (
-    <div className="hit-container" onClick={handleClick}>
-      <div className="hit-content">
+    <div className="hit-container">
+      <div className="hit-content" onClick={handleClick}>
         <div
           className="hit-text"
           dangerouslySetInnerHTML={{
@@ -108,20 +128,34 @@ const Hit = ({ hit, closeModalFn }: any) => {
               <span className="result-meta-label">Source:</span>
               <a
                 className="result-meta-link"
-                href={hit.metadata.author}
+                href={resolvedAuthorUrl || hit.metadata.author}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                title={hit.metadata.author}
+                title={resolvedAuthorUrl || hit.metadata.author}
               >
                 {(() => {
                   try {
-                    const url = new URL(hit.metadata.author);
+                    const urlToDisplay = resolvedAuthorUrl || hit.metadata.author;
+                    
+                    // Check if URL contains yourcommonbase.com
+                    if (urlToDisplay.includes('yourcommonbase.com')) {
+                      return 'Your Commonbase';
+                    }
+                    
+                    const url = new URL(urlToDisplay);
                     return url.hostname.replace('www.', '');
                   } catch {
-                    return hit.metadata.author.length > 30 
-                      ? hit.metadata.author.substring(0, 30) + '...' 
-                      : hit.metadata.author;
+                    const urlToDisplay = resolvedAuthorUrl || hit.metadata.author;
+                    
+                    // Check if URL contains yourcommonbase.com (for relative URLs)
+                    if (urlToDisplay.includes('yourcommonbase.com')) {
+                      return 'Your Commonbase';
+                    }
+                    
+                    return urlToDisplay.length > 30 
+                      ? urlToDisplay.substring(0, 30) + '...' 
+                      : urlToDisplay;
                   }
                 })()}
               </a>
@@ -129,6 +163,21 @@ const Hit = ({ hit, closeModalFn }: any) => {
           )}
         </div>
       </div>
+      
+      <button 
+        className="add-comment-btn"
+        onClick={(e) => {
+          e.stopPropagation();
+          const title = hit._highlightResult?.metadata?.title?.value || 
+                       hit.data?.substring(0, 50) + '...' || 
+                       'Untitled';
+          const author = hit.metadata?.author || '';
+          onAddComment(hit.id, title, author);
+        }}
+        title="Add comment"
+      >
+        +
+      </button>
     </div>
   );
 };
@@ -137,6 +186,13 @@ const Panel: React.FC = () => {
   const [searchClient, setSearchClient] = useState<any | null>(null);
   const [loadingSearch, setLoadingSearch] = useState(true);
   const [tokenError, setTokenError] = useState<string | null>(null);
+  const [showCommentModal, setShowCommentModal] = useState(false);
+  const [selectedEntryId, setSelectedEntryId] = useState<string>('');
+  const [selectedEntryTitle, setSelectedEntryTitle] = useState<string>('');
+  const [selectedEntryAuthor, setSelectedEntryAuthor] = useState<string>('');
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [quickAddText, setQuickAddText] = useState<string>('');
+  const [isQuickAdding, setIsQuickAdding] = useState<boolean>(false);
 
   const getToken = async (token: string) => {
     const baseUrl = await getBaseUrl();
@@ -407,11 +463,153 @@ const Panel: React.FC = () => {
     });
   };
 
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleAddComment = (entryId: string, entryTitle: string, entryAuthor: string = '') => {
+    setSelectedEntryId(entryId);
+    setSelectedEntryTitle(entryTitle);
+    setSelectedEntryAuthor(entryAuthor);
+    setShowCommentModal(true);
+  };
+
+  const submitComment = async (comment: string) => {
+    if (!comment.trim()) {
+      showToast('Comment cannot be empty', 'error');
+      return;
+    }
+
+    try {
+      // Get API key from storage
+      const result = await new Promise<{apiKey?: string}>((resolve) => {
+        chrome.storage.local.get(['apiKey'], resolve);
+      });
+
+      if (!result.apiKey) {
+        showToast('API key not found. Please check your settings.', 'error');
+        return;
+      }
+
+      const baseUrl = await getBaseUrl();
+      const response = await fetch(`${baseUrl}/backend/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${result.apiKey}`,
+        },
+        body: JSON.stringify({
+          data: comment,
+          metadata: {
+            title: `Comment on: ${selectedEntryTitle}`,
+            author: selectedEntryAuthor || window.location.href,
+          },
+          parent_id: selectedEntryId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add comment');
+      }
+
+      showToast('Comment added successfully!', 'success');
+      setShowCommentModal(false);
+      setSelectedEntryId('');
+      setSelectedEntryTitle('');
+      setSelectedEntryAuthor('');
+    } catch (error) {
+      console.error('Error adding comment:', error);
+      showToast('Failed to add comment. Please try again.', 'error');
+    }
+  };
+
+  const handleQuickAdd = async () => {
+    if (!quickAddText.trim()) {
+      showToast('Please enter some text to add', 'error');
+      return;
+    }
+
+    setIsQuickAdding(true);
+
+    try {
+      // Get API key from storage
+      const result = await new Promise<{apiKey?: string}>((resolve) => {
+        chrome.storage.local.get(['apiKey'], resolve);
+      });
+
+      if (!result.apiKey) {
+        showToast('API key not found. Please check your settings.', 'error');
+        return;
+      }
+
+      const baseUrl = await getBaseUrl();
+      const response = await fetch(`${baseUrl}/backend/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${result.apiKey}`,
+        },
+        body: JSON.stringify({
+          data: quickAddText,
+          metadata: {
+            title: 'From Chrome Extension',
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add text');
+      }
+
+      showToast('Text added to YCB successfully!', 'success');
+      setQuickAddText('');
+    } catch (error) {
+      console.error('Error adding text:', error);
+      showToast('Failed to add text. Please try again.', 'error');
+    } finally {
+      setIsQuickAdding(false);
+    }
+  };
+
   return (
     <div className="container">
       <div className="panel-header">
         <h1 className="panel-title">Your Commonbase</h1>
         <p className="panel-subtitle">Search from anywhere on your browser! Or, you can open your <a href="https://development.yourcommonbase.com/dashboard" target="_blank" rel="noopener noreferrer" style={{color: 'white'}}>dashboard</a> and search from there.</p>
+        
+        {/* Quick Add Input */}
+        <div className="quick-add-container">
+          <div className="quick-add-input-group">
+            <textarea
+              className="quick-add-input"
+              placeholder="Add text to YCB..."
+              value={quickAddText}
+              onChange={(e) => setQuickAddText(e.target.value)}
+              rows={2}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  handleQuickAdd();
+                }
+              }}
+            />
+            <button
+              className="quick-add-button"
+              onClick={handleQuickAdd}
+              disabled={isQuickAdding || !quickAddText.trim()}
+            >
+              {isQuickAdding ? (
+                <>
+                  <div className="loading-spinner"></div>
+                  Adding...
+                </>
+              ) : (
+                'Add to YCB'
+              )}
+            </button>
+          </div>
+        </div>
       </div>
 
       {loadingSearch && (
@@ -468,60 +666,82 @@ const Panel: React.FC = () => {
 
                 {/* Semantic search results */}
                 {results.map((item) => (
-                  <div
-                    className="result-card"
-                    key={item.id}
-                    onClick={() => handleSemanticResultClick(item)}
-                  >
-                    <div className="result-similarity">
-                      {Math.round(item.similarity * 100)}% match
-                    </div>
-                    <h3 className="result-title">
-                      {item.metadata?.title || 'Untitled'}
-                    </h3>
-                    <div className="result-content">
-                      {item.metadata?.ogDescription || item.data || 'No description available'}
-                    </div>
-                    
-                    {item.metadata?.ogImages && item.metadata.ogImages.length > 0 && (
-                      <div className="result-image">
-                        <img src={item.metadata.ogImages[0]} alt="Preview" />
+                  <div className="result-card" key={item.id}>
+                    <div 
+                      className="result-clickable"
+                      onClick={() => handleSemanticResultClick(item)}
+                    >
+                      <div className="result-similarity">
+                        {Math.round(item.similarity * 100)}% match
                       </div>
-                    )}
-                    
-                    {item.image && (
-                      <div className="result-image">
-                        <img src={item.image} alt="Attachment" />
+                      <h3 className="result-title">
+                        {item.metadata?.title || 'Untitled'}
+                      </h3>
+                      <div className="result-content">
+                        {item.metadata?.ogDescription || item.data || 'No description available'}
                       </div>
-                    )}
-                    
-                    <div className="result-metadata">
-                      {item.metadata?.author && (
-                        <div className="result-meta-item">
-                          <span className="result-meta-label">Source:</span>
-                          <span 
-                            className="result-meta-value" 
-                            title={item.metadata.author}
-                          >
-                            {(() => {
-                              try {
-                                const url = new URL(item.metadata.author);
-                                return url.hostname.replace('www.', '');
-                              } catch {
-                                return item.metadata.author.length > 30 
-                                  ? item.metadata.author.substring(0, 30) + '...' 
-                                  : item.metadata.author;
-                              }
-                            })()}
-                          </span>
+                      
+                      {item.metadata?.ogImages && item.metadata.ogImages.length > 0 && (
+                        <div className="result-image">
+                          <img src={item.metadata.ogImages[0]} alt="Preview" />
                         </div>
                       )}
+                      
+                      {item.image && (
+                        <div className="result-image">
+                          <img src={item.image} alt="Attachment" />
+                        </div>
+                      )}
+                      
+                      <div className="result-metadata">
+                        {item.metadata?.author && (
+                          <div className="result-meta-item">
+                            <span className="result-meta-label">Source:</span>
+                            <span 
+                              className="result-meta-value" 
+                              title={item.metadata.author}
+                            >
+                              {(() => {
+                                try {
+                                  // Check if URL contains yourcommonbase.com
+                                  if (item.metadata.author.includes('yourcommonbase.com')) {
+                                    return 'Your Commonbase';
+                                  }
+                                  
+                                  const url = new URL(item.metadata.author);
+                                  return url.hostname.replace('www.', '');
+                                } catch {
+                                  // Check if URL contains yourcommonbase.com (for relative URLs)
+                                  if (item.metadata.author.includes('yourcommonbase.com')) {
+                                    return 'Your Commonbase';
+                                  }
+                                  
+                                  return item.metadata.author.length > 30 
+                                    ? item.metadata.author.substring(0, 30) + '...' 
+                                    : item.metadata.author;
+                                }
+                              })()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    
+                    <button 
+                      className="add-comment-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAddComment(item.id, item.metadata?.title || 'Untitled', item.metadata?.author || '');
+                      }}
+                      title="Add comment"
+                    >
+                      +
+                    </button>
                   </div>
                 ))}
               </div>
 
-              <InfiniteHits hitComponent={Hit} />
+              <InfiniteHits hitComponent={(props: any) => <Hit {...props} onAddComment={handleAddComment} />} />
             </InstantSearch>
           )}
         </>
@@ -546,11 +766,11 @@ const Panel: React.FC = () => {
           )}
 
           {results.map((item) => (
-            <div
-              className="result-card"
-              key={item.id}
-              onClick={() => handleSemanticResultClick(item)}
-            >
+            <div className="result-card" key={item.id}>
+              <div 
+                className="result-clickable"
+                onClick={() => handleSemanticResultClick(item)}
+              >
               <div className="result-similarity">
                 {Math.round(item.similarity * 100)}% match
               </div>
@@ -583,9 +803,19 @@ const Panel: React.FC = () => {
                     >
                       {(() => {
                         try {
+                          // Check if URL contains yourcommonbase.com
+                          if (item.metadata.author.includes('yourcommonbase.com')) {
+                            return 'Your Commonbase';
+                          }
+                          
                           const url = new URL(item.metadata.author);
                           return url.hostname.replace('www.', '');
                         } catch {
+                          // Check if URL contains yourcommonbase.com (for relative URLs)
+                          if (item.metadata.author.includes('yourcommonbase.com')) {
+                            return 'Your Commonbase';
+                          }
+                          
                           return item.metadata.author.length > 30 
                             ? item.metadata.author.substring(0, 30) + '...' 
                             : item.metadata.author;
@@ -596,7 +826,63 @@ const Panel: React.FC = () => {
                 )}
               </div>
             </div>
+            
+            <button 
+              className="add-comment-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleAddComment(item.id, item.metadata?.title || 'Untitled', item.metadata?.author || '');
+              }}
+              title="Add comment"
+            >
+              +
+            </button>
+          </div>
           ))}
+        </div>
+      )}
+
+      {/* Comment Modal */}
+      {showCommentModal && (
+        <div className="modal-overlay" onClick={() => setShowCommentModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title">Add Comment</h3>
+            <p className="modal-subtitle">Commenting on: {selectedEntryTitle}</p>
+            <textarea
+              className="modal-textarea"
+              placeholder="Add your comment..."
+              rows={4}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  submitComment((e.target as HTMLTextAreaElement).value);
+                }
+              }}
+            />
+            <div className="modal-buttons">
+              <button
+                className="modal-btn modal-btn-secondary"
+                onClick={() => setShowCommentModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-primary"
+                onClick={(e) => {
+                  const textarea = e.currentTarget.parentElement?.previousElementSibling as HTMLTextAreaElement;
+                  submitComment(textarea?.value || '');
+                }}
+              >
+                Add Comment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`toast toast-${toast.type}`}>
+          {toast.message}
         </div>
       )}
     </div>

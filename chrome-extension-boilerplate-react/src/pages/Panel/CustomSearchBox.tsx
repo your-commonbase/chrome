@@ -134,7 +134,7 @@ function CustomSearchBox({ handleSearchManual, clearSemanticResults, initialQuer
         type="text"
         value={localQuery}
         onChange={onInputChange}
-        placeholder="Search your knowledge base..."
+        placeholder="Search your commonbase..."
         tabIndex={1}
         autoFocus={false}
         className="search-input"
