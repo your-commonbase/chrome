@@ -108,6 +108,46 @@ body {
   color: rgba(255, 255, 255, 0.5);
 }
 
+/* Quick Add Image Styles */
+.quick-add-image-container {
+  margin-top: 8px;
+}
+
+.quick-add-image-button {
+  width: 100%;
+  padding: 10px 16px;
+  background: rgba(34, 197, 94, 0.9);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: inherit;
+  min-height: 40px;
+}
+
+.quick-add-image-button:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 1);
+  transform: translateY(-1px);
+}
+
+.quick-add-image-button:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  cursor: not-allowed;
+  transform: none;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.quick-add-image-button svg {
+  flex-shrink: 0;
+}
+
 /* Search Box Styles */
 .search-container {
   margin-bottom: 24px;

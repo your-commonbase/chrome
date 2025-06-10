@@ -193,6 +193,7 @@ const Panel: React.FC = () => {
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [quickAddText, setQuickAddText] = useState<string>('');
   const [isQuickAdding, setIsQuickAdding] = useState<boolean>(false);
+  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
 
   const getToken = async (token: string) => {
     const baseUrl = await getBaseUrl();
@@ -572,6 +573,61 @@ const Panel: React.FC = () => {
     }
   };
 
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset the input so the same file can be selected again
+    event.target.value = '';
+
+    // Check if it's an image file
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select an image file', 'error');
+      return;
+    }
+
+    setIsUploadingImage(true);
+
+    try {
+      // Get API key from storage
+      const result = await new Promise<{apiKey?: string}>((resolve) => {
+        chrome.storage.local.get(['apiKey'], resolve);
+      });
+
+      if (!result.apiKey) {
+        showToast('API key not found. Please check your settings.', 'error');
+        return;
+      }
+
+      const baseUrl = await getBaseUrl();
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('metadata', JSON.stringify({
+        title: `Image from Chrome Extension: ${file.name}`,
+        type: 'image'
+      }));
+
+      const response = await fetch(`${baseUrl}/backend/v2/addImage`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${result.apiKey}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload image');
+      }
+
+      showToast('Image uploaded to YCB successfully!', 'success');
+    } catch (error) {
+      console.error('Error uploading image:', error);
+      showToast('Failed to upload image. Please try again.', 'error');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
   return (
     <div className="container">
       <div className="panel-header">
@@ -606,6 +662,38 @@ const Panel: React.FC = () => {
                 </>
               ) : (
                 'Add to YCB'
+              )}
+            </button>
+          </div>
+          
+          {/* Quick Add Image */}
+          <div className="quick-add-image-container">
+            <input
+              type="file"
+              id="imageUpload"
+              accept="image/*"
+              onChange={handleImageUpload}
+              style={{ display: 'none' }}
+            />
+            <button
+              className="quick-add-image-button"
+              onClick={() => document.getElementById('imageUpload')?.click()}
+              disabled={isUploadingImage}
+            >
+              {isUploadingImage ? (
+                <>
+                  <div className="loading-spinner"></div>
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21,15 16,10 5,21"/>
+                  </svg>
+                  Add Image to YCB
+                </>
               )}
             </button>
           </div>
