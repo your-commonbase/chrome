@@ -8,7 +8,7 @@ interface Props {
 const Options: React.FC<Props> = ({ title }: Props) => {
   const [apiKey, setApiKey] = useState('');
   const [cbUrl, setCbUrl] = useState('');
-  const [baseUrl, setBaseUrl] = useState('https://development.yourcommonbase.com');
+  const [baseUrl, setBaseUrl] = useState('https://yourcommonbase.com');
   const [openAIAPIKey, setOpenAIAPIKey] = useState('');
 
   const handleSubmit = () => {
@@ -31,7 +31,7 @@ const Options: React.FC<Props> = ({ title }: Props) => {
       setCbUrl(result.cbUrl || '');
     });
     chrome.storage.local.get(['baseUrl'], (result) => {
-      setBaseUrl(result.baseUrl || 'https://development.yourcommonbase.com');
+      setBaseUrl(result.baseUrl || 'https://yourcommonbase.com');
     });
   };
 
@@ -106,7 +106,7 @@ const Options: React.FC<Props> = ({ title }: Props) => {
           type="text"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="https://development.yourcommonbase.com"
+          placeholder="https://yourcommonbase.com"
         />
         <br />
         <br />

@@ -8,7 +8,7 @@ import CustomSearchBox from './CustomSearchBox';
 const getBaseUrl = (): Promise<string> => {
   return new Promise((resolve) => {
     chrome.storage.local.get(['baseUrl'], (result) => {
-      resolve(result.baseUrl || 'https://development.yourcommonbase.com');
+      resolve(result.baseUrl || 'https://yourcommonbase.com');
     });
   });
 };
@@ -198,9 +198,11 @@ const Panel: React.FC = () => {
   const [randomRecordImage, setRandomRecordImage] = useState<string | null>(null);
   const [storyKey, setStoryKey] = useState<number>(0); // Key to restart CSS animation
   const [isLoadingRandomRecord, setIsLoadingRandomRecord] = useState<boolean>(false);
+  const [theBaseUrl, setTheBaseUrl] = useState<string>('');
 
   const getToken = async (token: string) => {
     const baseUrl = await getBaseUrl();
+    setTheBaseUrl(baseUrl);
     const resp = await fetch(`${baseUrl}/backend/token`, {
       method: 'POST',
       headers: {
@@ -691,7 +693,7 @@ const Panel: React.FC = () => {
     
     const interval = setInterval(() => {
       fetchRandomRecord();
-    }, 30000); // Every 30 seconds
+    }, 30000 * 2 * 5); // Every 30 seconds
     
     return () => clearInterval(interval);
   }, []);
@@ -711,7 +713,7 @@ const Panel: React.FC = () => {
     <div className="container">
       <div className="panel-header">
         <h1 className="panel-title">Your Commonbase</h1>
-        <p className="panel-subtitle">Search from anywhere on your browser! Or, you can open your <a href="https://development.yourcommonbase.com/dashboard" target="_blank" rel="noopener noreferrer" style={{color: 'white'}}>Companion from here!</a></p>
+        <p className="panel-subtitle">Search from anywhere on your browser! Or, you can open your <a href={`${theBaseUrl}/dashboard`} target="_blank" rel="noopener noreferrer" style={{color: 'white'}}>Companion from here!</a></p>
         
         {/* Random Record Story */}
         {randomRecord && (

@@ -42,10 +42,10 @@ This is a Manifest V3 Chrome extension built with React 18 and Webpack 5. The ex
 ### API Integration
 
 The extension integrates with multiple YCB backend endpoints:
-- `https://development.yourcommonbase.com/backend/add` - Add content
-- `https://development.yourcommonbase.com/backend/addURL` - Add URLs
-- `https://development.yourcommonbase.com/backend/v2/addImage` - Add images
-- `https://development.yourcommonbase.com/backend/search` - Search content
+- `https://yourcommonbase.com/backend/add` - Add content
+- `https://yourcommonbase.com/backend/addURL` - Add URLs
+- `https://yourcommonbase.com/backend/v2/addImage` - Add images
+- `https://yourcommonbase.com/backend/search` - Search content
 - MeiliSearch instance
 
 ### Webpack Configuration

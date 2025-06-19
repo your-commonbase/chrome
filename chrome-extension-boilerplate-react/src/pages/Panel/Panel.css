@@ -78,7 +78,7 @@ body {
   border-radius: 0 3px 3px 0;
   width: 0%;
   /* Pure CSS animation - no JavaScript state updates */
-  animation: progressFill 30s linear forwards;
+  animation: progressFill 300s linear forwards;
   transform: translateZ(0);
 }
 

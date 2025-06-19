@@ -6,7 +6,7 @@ let isProcessing = false;
 // Helper function to get base URL from storage with fallback
 function getBaseUrl(callback) {
   chrome.storage.local.get(['baseUrl'], (result) => {
-    const baseUrl = result.baseUrl || 'https://development.yourcommonbase.com';
+    const baseUrl = result.baseUrl || 'https://yourcommonbase.com';
     callback(baseUrl);
   });
 }
@@ -1081,7 +1081,7 @@ function openModal(
 
   // Add view link after getting base URL
   chrome.storage.local.get(['baseUrl'], (result) => {
-    const baseUrl = result.baseUrl || 'https://development.yourcommonbase.com';
+    const baseUrl = result.baseUrl || 'https://yourcommonbase.com';
     const href = `${baseUrl}/dashboard/entry/${parentId}`;
     const a = document.createElement('a');
     a.style.cssText = `
@@ -1123,7 +1123,7 @@ function openModal(
     // get base URL from storage
     const baseUrlResult = await new Promise((resolve) => {
       chrome.storage.local.get(['baseUrl'], (result) => {
-        resolve(result.baseUrl || 'https://development.yourcommonbase.com');
+        resolve(result.baseUrl || 'https://yourcommonbase.com');
       });
     });
 
@@ -1442,7 +1442,7 @@ async function addToYCB(
     // get base URL from storage
     const baseUrlResult = await new Promise((resolve) => {
       chrome.storage.local.get(['baseUrl'], (result) => {
-        resolve(result.baseUrl || 'https://development.yourcommonbase.com');
+        resolve(result.baseUrl || 'https://yourcommonbase.com');
       });
     });
 
