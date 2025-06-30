@@ -586,6 +586,54 @@ const Panel: React.FC = () => {
     }
   };
 
+  // Helper function to get YouTube timestamp and create timestamped URL
+  const getYouTubeTimestamp = async (): Promise<string | null> => {
+    try {
+      if (!currentActiveTab?.url?.includes('youtube.com/watch')) {
+        return null;
+      }
+
+      // Get current timestamp from the active YouTube tab
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: currentActiveTab.id! },
+        func: () => {
+          try {
+            const video = document.querySelector('video') as HTMLVideoElement;
+            if (!video) return null;
+
+            const currentTime = Math.floor(video.currentTime);
+            const minutes = Math.floor(currentTime / 60);
+            const seconds = currentTime % 60;
+            const timestamp = `${minutes}:${seconds
+              .toString()
+              .padStart(2, '0')}`;
+
+            // Get current URL and add timestamp parameter
+            const url = new URL(window.location.href);
+            url.searchParams.set('t', `${currentTime}s`);
+
+            return { timestamp, url: url.toString() };
+          } catch (error) {
+            return null;
+          }
+        },
+      });
+
+      const result = results[0]?.result as {
+        timestamp?: string;
+        url?: string;
+      } | null;
+      if (result?.timestamp && result?.url) {
+        return `[${result.timestamp}](${result.url})`;
+      }
+
+      return null;
+    } catch (error) {
+      // Silently fail as requested
+      return null;
+    }
+  };
+
   const handleQuickAdd = async () => {
     if (!quickAddText.trim()) {
       showToast('Please enter some text to add', 'error');
@@ -605,6 +653,14 @@ const Panel: React.FC = () => {
         return;
       }
 
+      // Get YouTube timestamp if applicable
+      const timestampLink = await getYouTubeTimestamp();
+
+      // Append timestamp to comment data if available
+      const commentData = timestampLink
+        ? `${quickAddText}\n\n${timestampLink}`
+        : quickAddText;
+
       const baseUrl = await getBaseUrl();
       const response = await fetch(`${baseUrl}/backend/add`, {
         method: 'POST',
@@ -613,7 +669,7 @@ const Panel: React.FC = () => {
           Authorization: `Bearer ${result.apiKey}`,
         },
         body: JSON.stringify({
-          data: quickAddText,
+          data: commentData,
           metadata: {
             title: currentActiveTab?.title || 'From Chrome Extension',
             author: currentActiveTab?.url || '',
