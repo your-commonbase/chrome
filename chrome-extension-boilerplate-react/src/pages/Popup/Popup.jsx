@@ -5,7 +5,7 @@ const Popup = () => {
   const [message, setMessage] = useState('');
   const openOptionsPage = () => {
     chrome.runtime.openOptionsPage();
-  }
+  };
 
   // // if on a page get page title and url from the current tab
   // const getCurrentTab = () => {

@@ -12,12 +12,13 @@ function getBaseUrl(callback) {
 }
 
 function showToast(tabId, message, type = 'success') {
-  chrome.scripting.executeScript({
-    target: { tabId: tabId },
-    function: (message, type) => {
-      // Create toast element
-      const toast = document.createElement('div');
-      toast.style.cssText = `
+  chrome.scripting
+    .executeScript({
+      target: { tabId: tabId },
+      function: (message, type) => {
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.style.cssText = `
         position: fixed;
         top: 20px;
         right: 20px;
@@ -34,10 +35,10 @@ function showToast(tabId, message, type = 'success') {
         word-wrap: break-word;
         animation: slideIn 0.3s ease-out;
       `;
-      
-      // Add animation styles
-      const style = document.createElement('style');
-      style.textContent = `
+
+        // Add animation styles
+        const style = document.createElement('style');
+        style.textContent = `
         @keyframes slideIn {
           from { transform: translateX(100%); opacity: 0; }
           to { transform: translateX(0); opacity: 1; }
@@ -47,28 +48,29 @@ function showToast(tabId, message, type = 'success') {
           to { transform: translateX(100%); opacity: 0; }
         }
       `;
-      document.head.appendChild(style);
-      
-      toast.textContent = message;
-      document.body.appendChild(toast);
-      
-      // Auto-remove after 3 seconds
-      setTimeout(() => {
-        toast.style.animation = 'slideOut 0.3s ease-in';
+        document.head.appendChild(style);
+
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        // Auto-remove after 3 seconds
         setTimeout(() => {
-          if (toast.parentNode) {
-            document.body.removeChild(toast);
-          }
-          if (style.parentNode) {
-            document.head.removeChild(style);
-          }
-        }, 300);
-      }, 3000);
-    },
-    args: [message, type]
-  }).catch(err => {
-    console.error('Error showing toast:', err);
-  });
+          toast.style.animation = 'slideOut 0.3s ease-in';
+          setTimeout(() => {
+            if (toast.parentNode) {
+              document.body.removeChild(toast);
+            }
+            if (style.parentNode) {
+              document.head.removeChild(style);
+            }
+          }, 300);
+        }, 3000);
+      },
+      args: [message, type],
+    })
+    .catch((err) => {
+      console.error('Error showing toast:', err);
+    });
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -160,7 +162,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
         })
           .then((res) => {
             if (!res.ok) throw new Error('Upload failed');
-            showToast(tab.id, 'Selected text saved to YCB successfully!', 'success');
+            showToast(
+              tab.id,
+              'Selected text saved to YCB successfully!',
+              'success'
+            );
           })
           .catch((err) => {
             console.error('Error uploading text:', err);
@@ -202,7 +208,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'open-ycb-dashboard') {
     getBaseUrl((baseUrl) => {
       chrome.tabs.create({
-        url: `${baseUrl}/dashboard`
+        url: `${baseUrl}/dashboard`,
       });
     });
   }
@@ -222,42 +228,49 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 function captureScreenshotForCropping(tab) {
   chrome.storage.local.get(['apiKey'], (result) => {
     const apiKey = result.apiKey;
-    
+
     if (!apiKey) {
       showToast(tab.id, 'Please set API key in extension options', 'error');
       return;
     }
 
     // Capture the visible tab
-    chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, (dataUrl) => {
-      if (chrome.runtime.lastError) {
-        console.error('Screenshot failed:', chrome.runtime.lastError);
-        showToast(tab.id, 'Failed to capture screenshot', 'error');
-        return;
-      }
-
-      // Store screenshot data temporarily with a unique key
-      const screenshotId = Date.now().toString();
-      chrome.storage.local.set({
-        [`screenshot_${screenshotId}`]: {
-          imageData: dataUrl,
-          tabInfo: {
-            title: tab.title,
-            url: tab.url,
-            id: tab.id
-          }
+    chrome.tabs.captureVisibleTab(
+      tab.windowId,
+      { format: 'png' },
+      (dataUrl) => {
+        if (chrome.runtime.lastError) {
+          console.error('Screenshot failed:', chrome.runtime.lastError);
+          showToast(tab.id, 'Failed to capture screenshot', 'error');
+          return;
         }
-      }, () => {
-        // Open crop viewer window with screenshot ID in URL
-        chrome.windows.create({
-          url: chrome.runtime.getURL(`cropViewer.html?id=${screenshotId}`),
-          type: 'popup',
-          width: 900,
-          height: 1000,
-          focused: true
-        });
-      });
-    });
+
+        // Store screenshot data temporarily with a unique key
+        const screenshotId = Date.now().toString();
+        chrome.storage.local.set(
+          {
+            [`screenshot_${screenshotId}`]: {
+              imageData: dataUrl,
+              tabInfo: {
+                title: tab.title,
+                url: tab.url,
+                id: tab.id,
+              },
+            },
+          },
+          () => {
+            // Open crop viewer window with screenshot ID in URL
+            chrome.windows.create({
+              url: chrome.runtime.getURL(`cropViewer.html?id=${screenshotId}`),
+              type: 'popup',
+              width: 900,
+              height: 1000,
+              focused: true,
+            });
+          }
+        );
+      }
+    );
   });
 }
 
@@ -265,40 +278,47 @@ function captureScreenshotForCropping(tab) {
 function captureFullScreenshot(tab) {
   chrome.storage.local.get(['apiKey'], (result) => {
     const apiKey = result.apiKey;
-    
+
     if (!apiKey) {
       showToast(tab.id, 'Please set API key in extension options', 'error');
       return;
     }
 
-    chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' }, (dataUrl) => {
-      if (chrome.runtime.lastError) {
-        console.error('Screenshot failed:', chrome.runtime.lastError);
-        showToast(tab.id, 'Failed to capture screenshot', 'error');
-        return;
-      }
+    chrome.tabs.captureVisibleTab(
+      tab.windowId,
+      { format: 'png' },
+      (dataUrl) => {
+        if (chrome.runtime.lastError) {
+          console.error('Screenshot failed:', chrome.runtime.lastError);
+          showToast(tab.id, 'Failed to capture screenshot', 'error');
+          return;
+        }
 
-      const tabInfo = {
-        title: tab.title,
-        url: tab.url,
-        id: tab.id
-      };
+        const tabInfo = {
+          title: tab.title,
+          url: tab.url,
+          id: tab.id,
+        };
 
-      uploadScreenshot(dataUrl, tabInfo, apiKey, 'Screenshot of ' + tab.title)
-        .catch((error) => {
+        uploadScreenshot(
+          dataUrl,
+          tabInfo,
+          apiKey,
+          'Screenshot of ' + tab.title
+        ).catch((error) => {
           console.error('Failed to upload full screenshot:', error);
         });
-    });
+      }
+    );
   });
 }
-
 
 // Function to upload screenshot (returns Promise for async handling)
 function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
   return new Promise((resolve, reject) => {
     fetch(dataUrl)
-      .then(res => res.blob())
-      .then(blob => {
+      .then((res) => res.blob())
+      .then((blob) => {
         const formData = new FormData();
         formData.append('file', blob, 'screenshot.png');
         formData.append(
@@ -306,21 +326,18 @@ function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
           JSON.stringify({
             title: title,
             author: tabInfo.url,
-            type: 'image'
+            type: 'image',
           })
         );
 
         getBaseUrl((baseUrl) => {
-          fetch(
-            `${baseUrl}/backend/v2/addImage`,
-            {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${apiKey}`,
-              },
-              body: formData,
-            }
-          )
+          fetch(`${baseUrl}/backend/v2/addImage`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: formData,
+          })
             .then((res) => {
               if (!res.ok) throw new Error('Upload failed');
               return res.json();
@@ -328,22 +345,30 @@ function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
             .then((data) => {
               console.log('Screenshot uploaded');
               chrome.runtime.sendMessage({ action: 'setBadge' });
-              
+
               // Show toast if we have a tab ID
               if (tabInfo.id) {
-                showToast(tabInfo.id, 'Screenshot saved to YCB successfully!', 'success');
+                showToast(
+                  tabInfo.id,
+                  'Screenshot saved to YCB successfully!',
+                  'success'
+                );
               }
-              
+
               resolve(data); // Return the response data including the ID
             })
             .catch((err) => {
               console.error('Error uploading screenshot:', err);
-              
+
               // Show toast if we have a tab ID
               if (tabInfo.id) {
-                showToast(tabInfo.id, 'Failed to save screenshot to YCB', 'error');
+                showToast(
+                  tabInfo.id,
+                  'Failed to save screenshot to YCB',
+                  'error'
+                );
               }
-              
+
               reject(err);
             });
         });
@@ -353,19 +378,24 @@ function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
 }
 
 // TODO screenshot comment Function to poll for object metadata
-function pollForMetadata(apiKey, platformId, maxAttempts = 10, intervalMs = 2000) {
+function pollForMetadata(
+  apiKey,
+  platformId,
+  maxAttempts = 10,
+  intervalMs = 2000
+) {
   return new Promise((resolve, reject) => {
     let attempts = 0;
-    
+
     const poll = async () => {
       attempts++;
       console.log(`Polling for metadata, attempt ${attempts}/${maxAttempts}`);
-      
+
       try {
         const baseUrl = await new Promise((res) => {
           getBaseUrl((url) => res(url));
         });
-        
+
         const response = await fetch(`${baseUrl}/backend/fetch`, {
           method: 'POST',
           headers: {
@@ -373,47 +403,56 @@ function pollForMetadata(apiKey, platformId, maxAttempts = 10, intervalMs = 2000
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            platformId: platformId
+            platformId: platformId,
           }),
         });
-        
+
         if (!response.ok) {
           throw new Error(`Fetch failed with status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         console.log(`Polling response:`, data);
-        
+
         // Check if metadata exists
         if (data && data.metadata) {
           console.log('Metadata found:', data.metadata);
           resolve(data);
           return;
         }
-        
+
         // If no metadata and we've reached max attempts, fail
         if (attempts >= maxAttempts) {
-          reject(new Error(`Metadata not found after ${maxAttempts} attempts (${maxAttempts * intervalMs / 1000}s)`));
+          reject(
+            new Error(
+              `Metadata not found after ${maxAttempts} attempts (${
+                (maxAttempts * intervalMs) / 1000
+              }s)`
+            )
+          );
           return;
         }
-        
+
         // Schedule next attempt
         setTimeout(poll, intervalMs);
-        
       } catch (error) {
         console.error(`Polling attempt ${attempts} failed:`, error);
-        
+
         // If we've reached max attempts, fail
         if (attempts >= maxAttempts) {
-          reject(new Error(`Polling failed after ${maxAttempts} attempts: ${error.message}`));
+          reject(
+            new Error(
+              `Polling failed after ${maxAttempts} attempts: ${error.message}`
+            )
+          );
           return;
         }
-        
+
         // Schedule next attempt
         setTimeout(poll, intervalMs);
       }
     };
-    
+
     // Start polling immediately
     poll();
   });
@@ -426,9 +465,6 @@ function addCommentToScreenshot(apiKey, comment, tabInfo, parentId) {
       reject(new Error('No parent ID provided for comment'));
       return;
     }
-
-   
-
 
     getBaseUrl((baseUrl) => {
       fetch(`${baseUrl}/backend/add`, {
@@ -524,12 +560,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   }
 });
 
-
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'save-image-to-ycb') {
     chrome.storage.local.get(['apiKey'], (result) => {
       const apiKey = result.apiKey;
-      
+
       if (!apiKey) {
         showToast(tab.id, 'Please set API key in extension options', 'error');
         return;
@@ -549,28 +584,29 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           );
 
           getBaseUrl((baseUrl) => {
-            return fetch(
-              `${baseUrl}/backend/v2/addImage`,
-              {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${apiKey}`,
-                },
-                body: formData,
-              }
-            )
+            return fetch(`${baseUrl}/backend/v2/addImage`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: formData,
+            })
               .then((res) => {
                 if (!res.ok) throw new Error('Upload failed');
                 console.log('Image uploaded');
                 chrome.runtime.sendMessage({ action: 'setBadge' });
-                showToast(tab.id, 'Image saved to YCB successfully!', 'success');
+                showToast(
+                  tab.id,
+                  'Image saved to YCB successfully!',
+                  'success'
+                );
               })
               .catch((err) => {
                 console.error('Error uploading image:', err);
                 showToast(tab.id, 'Failed to save image to YCB', 'error');
               });
           });
-        })
+        });
     });
   }
 });
@@ -578,12 +614,12 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'open-side-panel-with-selection' && tab.id) {
     const selectedText = info.selectionText || '';
-    
+
     // Get arc mode setting synchronously to avoid losing user gesture
     chrome.storage.sync.get(['arcMode'], ({ arcMode }) => {
       // Store the query for the panel to pick up
       chrome.storage.local.set({ panelQuery: selectedText });
-      
+
       if (arcMode) {
         chrome.windows.create(
           {
@@ -601,12 +637,17 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             if (panelTab && panelTab.id) {
               // Give the panel a moment to load (optional, but sometimes necessary)
               setTimeout(() => {
-                chrome.tabs.sendMessage(panelTab.id, {
-                  action: 'updatePanelQuery',
-                  query: selectedText,
-                }).catch(err => {
-                  console.log('Message failed, panel will use storage instead:', err);
-                });
+                chrome.tabs
+                  .sendMessage(panelTab.id, {
+                    action: 'updatePanelQuery',
+                    query: selectedText,
+                  })
+                  .catch((err) => {
+                    console.log(
+                      'Message failed, panel will use storage instead:',
+                      err
+                    );
+                  });
               }, 500); // 500ms delay, adjust as needed
             }
           }
@@ -617,17 +658,22 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
           enabled: true,
         });
         chrome.sidePanel.open({ tabId: tab.id });
-        
+
         // Send message to update existing panel (if already open) and store for new panels
         setTimeout(() => {
-          chrome.runtime.sendMessage({
-            action: 'updatePanelQuery',
-            query: selectedText,
-          }).catch(err => {
-            console.log('No panel to receive message yet, will use storage:', err);
-          });
+          chrome.runtime
+            .sendMessage({
+              action: 'updatePanelQuery',
+              query: selectedText,
+            })
+            .catch((err) => {
+              console.log(
+                'No panel to receive message yet, will use storage:',
+                err
+              );
+            });
         }, 100); // Short delay to ensure panel context is ready
-        
+
         console.log('Panel opened, query stored and message sent');
       }
     });
@@ -654,7 +700,11 @@ function savePageToYCB(tab) {
 
       if (!apiKey || !cbUrl) {
         console.log('apiKey and cbUrl are not set');
-        showToast(tab.id, 'Please set API key and CB URL in extension options', 'error');
+        showToast(
+          tab.id,
+          'Please set API key and CB URL in extension options',
+          'error'
+        );
         chrome.runtime.openOptionsPage();
         isProcessing = false;
         return;
@@ -1128,24 +1178,21 @@ function openModal(
     });
 
     // post to backend/add
-    const response = await fetch(
-      `${baseUrlResult}/backend/add`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
+    const response = await fetch(`${baseUrlResult}/backend/add`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        data: comment,
+        metadata: {
+          title: tabTitle,
+          author: tabUrl,
         },
-        body: JSON.stringify({
-          data: comment,
-          metadata: {
-            title: tabTitle,
-            author: tabUrl,
-          },
-          parent_id: parentId,
-        }),
-      }
-    );
+        parent_id: parentId,
+      }),
+    });
 
     const data = await response.json();
     console.log(data);
@@ -1290,7 +1337,7 @@ function openModal(
   // Submit button click handler
   submitButton.addEventListener('click', async () => {
     const text = textBox.value.trim();
-    
+
     if (!text) {
       // Show error state briefly
       textBox.style.borderColor = '#ef4444 !important';
@@ -1345,7 +1392,7 @@ function openModal(
       submitButton.style.background = '#3b82f6 !important';
       submitButton.style.cursor = 'pointer !important';
       submitButton.textContent = 'Add Comment';
-      
+
       // Show error state
       textBox.style.borderColor = '#ef4444 !important';
       setTimeout(() => {
@@ -1385,7 +1432,7 @@ function openModal(
   modal.appendChild(subtitle);
   modal.appendChild(viewContainer);
   modal.appendChild(textBox);
-  
+
   buttonContainer.appendChild(closeButton);
   buttonContainer.appendChild(submitButton);
   modal.appendChild(buttonContainer);
@@ -1447,23 +1494,20 @@ async function addToYCB(
     });
 
     // post to backend/addURL
-    const response = await fetch(
-      `${baseUrlResult}/backend/addURL`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
+    const response = await fetch(`${baseUrlResult}/backend/addURL`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        url: tabUrl,
+        metadata: {
+          title: tabTitle,
+          author: tabUrl,
         },
-        body: JSON.stringify({
-          url: tabUrl,
-          metadata: {
-            title: tabTitle,
-            author: tabUrl,
-          },
-        }),
-      }
-    );
+      }),
+    });
 
     if (!response.ok) throw new Error('Upload failed');
 
@@ -1483,7 +1527,7 @@ async function addToYCB(
     });
 
     chrome.runtime.sendMessage({ action: 'setBadge' });
-    
+
     // Show success toast
     showToastInPage('Page saved to YCB successfully!', 'success');
   } catch (error) {
@@ -1512,7 +1556,7 @@ function showToastInPage(message, type = 'success') {
     word-wrap: break-word;
     animation: slideIn 0.3s ease-out;
   `;
-  
+
   // Add animation styles
   const style = document.createElement('style');
   style.textContent = `
@@ -1526,10 +1570,10 @@ function showToastInPage(message, type = 'success') {
     }
   `;
   document.head.appendChild(style);
-  
+
   toast.textContent = message;
   document.body.appendChild(toast);
-  
+
   // Auto-remove after 3 seconds
   setTimeout(() => {
     toast.style.animation = 'slideOut 0.3s ease-in';
@@ -1637,7 +1681,7 @@ async function addToYCBWithComment(
     });
 
     chrome.runtime.sendMessage({ action: 'setBadge' });
-    
+
     // Show success toast
     showToastInPage('Page with summary saved to YCB successfully!', 'success');
   } catch (error) {
@@ -1656,10 +1700,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === 'uploadCroppedScreenshot') {
     // Handle cropped screenshot upload
     const { imageData, tabInfo, comment } = message;
-    
+
     chrome.storage.local.get(['apiKey'], (result) => {
       const apiKey = result.apiKey;
-      
+
       if (!apiKey) {
         sendResponse({ success: false, error: 'API key not found' });
         return;
@@ -1667,33 +1711,62 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       try {
         console.log('Uploading cropped screenshot with comment:', comment);
-        uploadScreenshot(imageData, tabInfo, apiKey, `Area screenshot of ${tabInfo.title}`)
+        uploadScreenshot(
+          imageData,
+          tabInfo,
+          apiKey,
+          `Area screenshot of ${tabInfo.title}`
+        )
           .then((screenshotResponse) => {
             console.log('Screenshot upload response:', screenshotResponse);
-            
+
             // Always send success response immediately to close the window
             sendResponse({ success: true });
-            
+
             // If there's a comment, add it as a linked entry in the background
             if (comment && comment.trim()) {
-              console.log('Adding comment to screenshot with parent ID:', screenshotResponse?.id);
-              console.log('Window can now close - comment will be processed in background');
-              
+              console.log(
+                'Adding comment to screenshot with parent ID:',
+                screenshotResponse?.id
+              );
+              console.log(
+                'Window can now close - comment will be processed in background'
+              );
+
               // Process comment in background after delay
               setTimeout(() => {
-                addCommentToScreenshot(apiKey, comment, tabInfo, screenshotResponse?.id)
+                addCommentToScreenshot(
+                  apiKey,
+                  comment,
+                  tabInfo,
+                  screenshotResponse?.id
+                )
                   .then((commentResponse) => {
-                    console.log('Comment added successfully in background:', commentResponse);
+                    console.log(
+                      'Comment added successfully in background:',
+                      commentResponse
+                    );
                     // Optionally show a toast notification that comment was added
                     if (tabInfo.id) {
-                      showToast(tabInfo.id, 'Screenshot comment added successfully!', 'success');
+                      showToast(
+                        tabInfo.id,
+                        'Screenshot comment added successfully!',
+                        'success'
+                      );
                     }
                   })
                   .catch((error) => {
-                    console.error('Failed to add comment in background:', error);
+                    console.error(
+                      'Failed to add comment in background:',
+                      error
+                    );
                     // Optionally show error toast
                     if (tabInfo.id) {
-                      showToast(tabInfo.id, 'Failed to add screenshot comment', 'error');
+                      showToast(
+                        tabInfo.id,
+                        'Failed to add screenshot comment',
+                        'error'
+                      );
                     }
                   });
               }, 60000);
@@ -1710,7 +1783,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: false, error: error.message });
       }
     });
-    
+
     return true; // Keep message channel open for async response
   }
 });
@@ -1721,7 +1794,7 @@ chrome.commands.onCommand.addListener((command) => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const currentTab = tabs[0];
       if (!currentTab) return;
-      
+
       chrome.storage.sync.get(['arcMode'], ({ arcMode }) => {
         if (arcMode) {
           chrome.windows.create({
@@ -1748,7 +1821,7 @@ chrome.commands.onCommand.addListener((command) => {
   } else if (command === 'open-ycb-dashboard') {
     getBaseUrl((baseUrl) => {
       chrome.tabs.create({
-        url: `${baseUrl}/dashboard`
+        url: `${baseUrl}/dashboard`,
       });
     });
   }

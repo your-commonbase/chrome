@@ -13,7 +13,7 @@ const ASSET_PATH = process.env.ASSET_PATH || '/';
 
 var alias = {
   react: path.resolve('./node_modules/react'),
-    'react-dom': path.resolve('./node_modules/react-dom'),
+  'react-dom': path.resolve('./node_modules/react-dom'),
 };
 
 // load the secrets
@@ -48,7 +48,13 @@ var options = {
     contentScript: path.join(__dirname, 'src', 'pages', 'Content', 'index.js'),
     devtools: path.join(__dirname, 'src', 'pages', 'Devtools', 'index.js'),
     panel: path.join(__dirname, 'src', 'pages', 'Panel', 'index.jsx'),
-    cropViewer: path.join(__dirname, 'src', 'pages', 'CropViewer', 'CropViewer.jsx'),
+    cropViewer: path.join(
+      __dirname,
+      'src',
+      'pages',
+      'CropViewer',
+      'CropViewer.jsx'
+    ),
   },
   chromeExtensionBoilerplate: {
     notHotReload: ['background', 'contentScript', 'devtools'],
@@ -219,7 +225,13 @@ var options = {
       cache: false,
     }),
     new HtmlWebpackPlugin({
-      template: path.join(__dirname, 'src', 'pages', 'CropViewer', 'index.html'),
+      template: path.join(
+        __dirname,
+        'src',
+        'pages',
+        'CropViewer',
+        'index.html'
+      ),
       filename: 'cropViewer.html',
       chunks: ['cropViewer'],
       cache: false,

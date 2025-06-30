@@ -98,18 +98,18 @@ const Hit = ({ hit, onAddComment }: any) => {
         <div
           className="hit-text"
           dangerouslySetInnerHTML={{
-            __html: hit._highlightResult.data.value.replace(
-              /<em>/g, '<span class="hit-highlight">'
-            ).replace(/<\/em>/g, '</span>'),
+            __html: hit._highlightResult.data.value
+              .replace(/<em>/g, '<span class="hit-highlight">')
+              .replace(/<\/em>/g, '</span>'),
           }}
         />
-        
+
         {image && image.id === hit.id && (
           <div className="result-image">
             <img src={image.image} alt="Attachment" />
           </div>
         )}
-        
+
         <div className="result-metadata">
           {hit._highlightResult.metadata.title && (
             <div className="result-meta-item">
@@ -122,7 +122,7 @@ const Hit = ({ hit, onAddComment }: any) => {
               />
             </div>
           )}
-          
+
           {hit._highlightResult.metadata.author && (
             <div className="result-meta-item">
               <span className="result-meta-label">Source:</span>
@@ -136,25 +136,27 @@ const Hit = ({ hit, onAddComment }: any) => {
               >
                 {(() => {
                   try {
-                    const urlToDisplay = resolvedAuthorUrl || hit.metadata.author;
-                    
+                    const urlToDisplay =
+                      resolvedAuthorUrl || hit.metadata.author;
+
                     // Check if URL contains yourcommonbase.com
                     if (urlToDisplay.includes('yourcommonbase.com')) {
                       return 'Your Commonbase';
                     }
-                    
+
                     const url = new URL(urlToDisplay);
                     return url.hostname.replace('www.', '');
                   } catch {
-                    const urlToDisplay = resolvedAuthorUrl || hit.metadata.author;
-                    
+                    const urlToDisplay =
+                      resolvedAuthorUrl || hit.metadata.author;
+
                     // Check if URL contains yourcommonbase.com (for relative URLs)
                     if (urlToDisplay.includes('yourcommonbase.com')) {
                       return 'Your Commonbase';
                     }
-                    
-                    return urlToDisplay.length > 30 
-                      ? urlToDisplay.substring(0, 30) + '...' 
+
+                    return urlToDisplay.length > 30
+                      ? urlToDisplay.substring(0, 30) + '...'
                       : urlToDisplay;
                   }
                 })()}
@@ -163,14 +165,15 @@ const Hit = ({ hit, onAddComment }: any) => {
           )}
         </div>
       </div>
-      
-      <button 
+
+      <button
         className="add-comment-btn"
         onClick={(e) => {
           e.stopPropagation();
-          const title = hit._highlightResult?.metadata?.title?.value || 
-                       hit.data?.substring(0, 50) + '...' || 
-                       'Untitled';
+          const title =
+            hit._highlightResult?.metadata?.title?.value ||
+            hit.data?.substring(0, 50) + '...' ||
+            'Untitled';
           const author = hit.metadata?.author || '';
           onAddComment(hit.id, title, author);
         }}
@@ -190,15 +193,28 @@ const Panel: React.FC = () => {
   const [selectedEntryId, setSelectedEntryId] = useState<string>('');
   const [selectedEntryTitle, setSelectedEntryTitle] = useState<string>('');
   const [selectedEntryAuthor, setSelectedEntryAuthor] = useState<string>('');
-  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: 'success' | 'error';
+  } | null>(null);
   const [quickAddText, setQuickAddText] = useState<string>('');
   const [isQuickAdding, setIsQuickAdding] = useState<boolean>(false);
   const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
   const [randomRecord, setRandomRecord] = useState<any>(null);
-  const [randomRecordImage, setRandomRecordImage] = useState<string | null>(null);
+  const [randomRecordImage, setRandomRecordImage] = useState<string | null>(
+    null
+  );
   const [storyKey, setStoryKey] = useState<number>(0); // Key to restart CSS animation
-  const [isLoadingRandomRecord, setIsLoadingRandomRecord] = useState<boolean>(false);
+  const [isLoadingRandomRecord, setIsLoadingRandomRecord] =
+    useState<boolean>(false);
   const [theBaseUrl, setTheBaseUrl] = useState<string>('');
+  const [hideRandomEntry, setHideRandomEntry] = useState<boolean>(false);
+  const [activeTabs, setActiveTabs] = useState<chrome.tabs.Tab[]>([]);
+  const [currentActiveTab, setCurrentActiveTab] =
+    useState<chrome.tabs.Tab | null>(null);
+  const [isAddingTab, setIsAddingTab] = useState<{ [key: string]: boolean }>(
+    {}
+  );
 
   const getToken = async (token: string) => {
     const baseUrl = await getBaseUrl();
@@ -218,6 +234,41 @@ const Panel: React.FC = () => {
 
     return data.token;
   };
+
+  useEffect(() => {
+    chrome.storage.local.get(['hideRandomEntry'], (result) => {
+      setHideRandomEntry(result.hideRandomEntry || false);
+    });
+  }, []);
+
+  useEffect(() => {
+    const fetchTabs = () => {
+      chrome.tabs.query({}, (tabs) => {
+        setActiveTabs(tabs);
+        // Find the current active tab
+        const activeTab = tabs.find((tab) => tab.active);
+        setCurrentActiveTab(activeTab || null);
+      });
+    };
+
+    fetchTabs();
+
+    const tabUpdateListener = () => {
+      fetchTabs();
+    };
+
+    chrome.tabs.onUpdated.addListener(tabUpdateListener);
+    chrome.tabs.onCreated.addListener(tabUpdateListener);
+    chrome.tabs.onRemoved.addListener(tabUpdateListener);
+    chrome.tabs.onActivated.addListener(tabUpdateListener);
+
+    return () => {
+      chrome.tabs.onUpdated.removeListener(tabUpdateListener);
+      chrome.tabs.onCreated.removeListener(tabUpdateListener);
+      chrome.tabs.onRemoved.removeListener(tabUpdateListener);
+      chrome.tabs.onActivated.removeListener(tabUpdateListener);
+    };
+  }, []);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;
@@ -475,7 +526,11 @@ const Panel: React.FC = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleAddComment = (entryId: string, entryTitle: string, entryAuthor: string = '') => {
+  const handleAddComment = (
+    entryId: string,
+    entryTitle: string,
+    entryAuthor: string = ''
+  ) => {
     setSelectedEntryId(entryId);
     setSelectedEntryTitle(entryTitle);
     setSelectedEntryAuthor(entryAuthor);
@@ -490,7 +545,7 @@ const Panel: React.FC = () => {
 
     try {
       // Get API key from storage
-      const result = await new Promise<{apiKey?: string}>((resolve) => {
+      const result = await new Promise<{ apiKey?: string }>((resolve) => {
         chrome.storage.local.get(['apiKey'], resolve);
       });
 
@@ -541,7 +596,7 @@ const Panel: React.FC = () => {
 
     try {
       // Get API key from storage
-      const result = await new Promise<{apiKey?: string}>((resolve) => {
+      const result = await new Promise<{ apiKey?: string }>((resolve) => {
         chrome.storage.local.get(['apiKey'], resolve);
       });
 
@@ -560,7 +615,8 @@ const Panel: React.FC = () => {
         body: JSON.stringify({
           data: quickAddText,
           metadata: {
-            title: 'From Chrome Extension',
+            title: currentActiveTab?.title || 'From Chrome Extension',
+            author: currentActiveTab?.url || '',
           },
         }),
       });
@@ -579,7 +635,9 @@ const Panel: React.FC = () => {
     }
   };
 
-  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -596,7 +654,7 @@ const Panel: React.FC = () => {
 
     try {
       // Get API key from storage
-      const result = await new Promise<{apiKey?: string}>((resolve) => {
+      const result = await new Promise<{ apiKey?: string }>((resolve) => {
         chrome.storage.local.get(['apiKey'], resolve);
       });
 
@@ -608,10 +666,13 @@ const Panel: React.FC = () => {
       const baseUrl = await getBaseUrl();
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('metadata', JSON.stringify({
-        title: `Image from Chrome Extension: ${file.name}`,
-        type: 'image'
-      }));
+      formData.append(
+        'metadata',
+        JSON.stringify({
+          title: `Image from Chrome Extension: ${file.name}`,
+          type: 'image',
+        })
+      );
 
       const response = await fetch(`${baseUrl}/backend/v2/addImage`, {
         method: 'POST',
@@ -636,10 +697,10 @@ const Panel: React.FC = () => {
 
   const fetchRandomRecord = async () => {
     setIsLoadingRandomRecord(true);
-    
+
     try {
       // Get API key from storage
-      const result = await new Promise<{apiKey?: string}>((resolve) => {
+      const result = await new Promise<{ apiKey?: string }>((resolve) => {
         chrome.storage.local.get(['apiKey'], resolve);
       });
 
@@ -668,7 +729,7 @@ const Panel: React.FC = () => {
       if (data && data.length > 0) {
         const record = data[0];
         setRandomRecord(record);
-        
+
         // If it's an image record, fetch the image
         if (record.metadata?.type === 'image') {
           const imageData = await fetchImage(record.id);
@@ -676,9 +737,9 @@ const Panel: React.FC = () => {
         } else {
           setRandomRecordImage(null);
         }
-        
+
         // Reset CSS animation by changing key
-        setStoryKey(prev => prev + 1);
+        setStoryKey((prev) => prev + 1);
       }
     } catch (error) {
       console.error('Error fetching random record:', error);
@@ -689,42 +750,169 @@ const Panel: React.FC = () => {
 
   // Initialize random record and set up 30-second cycle
   useEffect(() => {
-    fetchRandomRecord(); // Initial fetch
-    
-    const interval = setInterval(() => {
-      fetchRandomRecord();
-    }, 30000 * 2 * 5); // Every 30 seconds
-    
-    return () => clearInterval(interval);
-  }, []);
+    if (!hideRandomEntry) {
+      fetchRandomRecord(); // Initial fetch
+
+      const interval = setInterval(() => {
+        fetchRandomRecord();
+      }, 30000 * 2 * 5); // Every 30 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [hideRandomEntry]);
 
   // No more JavaScript progress bar animation - using pure CSS instead
 
   const handleRandomRecordClick = async () => {
     if (!randomRecord) return;
-    
+
     const baseUrl = await getBaseUrl();
     chrome.tabs.create({
       url: `${baseUrl}/dashboard/entry/${randomRecord.id}`,
     });
   };
 
+  const handleSwitchToTab = async (tab: chrome.tabs.Tab) => {
+    if (!tab.id) return;
+
+    try {
+      // Switch to the tab
+      await chrome.tabs.update(tab.id, { active: true });
+      // Switch to the window containing the tab
+      if (tab.windowId) {
+        await chrome.windows.update(tab.windowId, { focused: true });
+      }
+    } catch (error) {
+      console.error('Error switching to tab:', error);
+      showToast('Failed to switch to tab.', 'error');
+    }
+  };
+
+  const handleAddTab = async (tab: chrome.tabs.Tab) => {
+    if (!tab.url || !tab.id) return;
+
+    setIsAddingTab((prev) => ({ ...prev, [tab.id!.toString()]: true }));
+
+    try {
+      const result = await new Promise<{ apiKey?: string }>((resolve) => {
+        chrome.storage.local.get(['apiKey'], resolve);
+      });
+
+      if (!result.apiKey) {
+        showToast('API key not found. Please check your settings.', 'error');
+        return;
+      }
+
+      const baseUrl = await getBaseUrl();
+      const response = await fetch(`${baseUrl}/backend/add`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${result.apiKey}`,
+        },
+        body: JSON.stringify({
+          data: tab.title || 'Untitled',
+          metadata: {
+            title: tab.title || 'Untitled',
+            author: tab.url,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add tab');
+      }
+
+      showToast('Tab added to YCB successfully!', 'success');
+    } catch (error) {
+      console.error('Error adding tab:', error);
+      showToast('Failed to add tab to YCB. Please try again.', 'error');
+    } finally {
+      setIsAddingTab((prev) => ({ ...prev, [tab.id!.toString()]: false }));
+    }
+  };
+
   return (
     <div className="container">
       <div className="panel-header">
         <h1 className="panel-title">Your Commonbase</h1>
-        <p className="panel-subtitle">Search from anywhere on your browser! Or, you can open your <a href={`${theBaseUrl}/dashboard`} target="_blank" rel="noopener noreferrer" style={{color: 'white'}}>Companion from here!</a></p>
-        
+        <p className="panel-subtitle">
+          Search from anywhere on your browser! Or, you can open your{' '}
+          <a
+            href={`${theBaseUrl}/dashboard`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: 'white' }}
+          >
+            Companion from here!
+          </a>
+        </p>
+
+        {/* Active Tabs Section */}
+        <div className="tabs-section">
+          <h3 className="section-title">Active Tabs</h3>
+          <div className="tabs-list">
+            {activeTabs.map((tab) => (
+              <div
+                key={tab.id}
+                className="tab-item"
+                onClick={() => handleSwitchToTab(tab)}
+              >
+                <div className="tab-favicon">
+                  <img
+                    src={
+                      tab.favIconUrl ||
+                      'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiByeD0iMiIgZmlsbD0iIzMzMzMzMyIvPgo8L3N2Zz4K'
+                    }
+                    alt=""
+                    className="tab-favicon-img"
+                    onError={(e) => {
+                      e.currentTarget.src =
+                        'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiByeD0iMiIgZmlsbD0iIzMzMzMzMyIvPgo8L3N2Zz4K';
+                    }}
+                  />
+                </div>
+                <div className="tab-info">
+                  <span className="tab-title">{tab.title || 'Untitled'}</span>
+                  <span className="tab-url">
+                    {tab.url
+                      ? (() => {
+                          try {
+                            return new URL(tab.url).hostname;
+                          } catch {
+                            return tab.url.length > 30
+                              ? tab.url.substring(0, 30) + '...'
+                              : tab.url;
+                          }
+                        })()
+                      : ''}
+                  </span>
+                </div>
+                {!tab.url?.includes('yourcommonbase.com') && (
+                  <button
+                    className="add-tab-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleAddTab(tab);
+                    }}
+                    disabled={isAddingTab[tab.id?.toString() || ''] || false}
+                    title="Add tab to YCB"
+                  >
+                    {isAddingTab[tab.id?.toString() || ''] ? '...' : '+'}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Random Record Story */}
-        {randomRecord && (
+        {!hideRandomEntry && randomRecord && (
           <div className="random-story-container" key={storyKey}>
             <div className="story-progress-bar">
               <div className="story-progress-fill"></div>
             </div>
-            <div 
-              className="story-content"
-              onClick={handleRandomRecordClick}
-            >
+            <div className="story-content" onClick={handleRandomRecordClick}>
               {isLoadingRandomRecord ? (
                 <div className="story-loading">
                   <div className="loading-spinner"></div>
@@ -742,8 +930,8 @@ const Panel: React.FC = () => {
                       {randomRecord.metadata?.title || 'Untitled'}
                     </h4>
                     <p className="story-data">
-                      {randomRecord.data?.length > 150 
-                        ? randomRecord.data.substring(0, 150) + '...' 
+                      {randomRecord.data?.length > 150
+                        ? randomRecord.data.substring(0, 150) + '...'
                         : randomRecord.data || 'No content available'}
                     </p>
                     {randomRecord.metadata?.author && (
@@ -757,8 +945,9 @@ const Panel: React.FC = () => {
                             const urlObj = new URL(url);
                             return urlObj.hostname.replace('www.', '');
                           } catch {
-                            return randomRecord.metadata.author.length > 25 
-                              ? randomRecord.metadata.author.substring(0, 25) + '...' 
+                            return randomRecord.metadata.author.length > 25
+                              ? randomRecord.metadata.author.substring(0, 25) +
+                                  '...'
                               : randomRecord.metadata.author;
                           }
                         })()}
@@ -770,13 +959,17 @@ const Panel: React.FC = () => {
             </div>
           </div>
         )}
-        
+
         {/* Quick Add Input */}
         <div className="quick-add-container">
           <div className="quick-add-input-group">
             <textarea
               className="quick-add-input"
-              placeholder="What are you thinking about?"
+              placeholder={
+                currentActiveTab?.title
+                  ? `What does ${currentActiveTab.title} make you think about?`
+                  : 'What are you thinking about?'
+              }
               value={quickAddText}
               onChange={(e) => setQuickAddText(e.target.value)}
               rows={2}
@@ -802,9 +995,9 @@ const Panel: React.FC = () => {
               )}
             </button>
           </div>
-          
+
           {/* Quick Add Image */}
-          <div className="quick-add-image-container">
+          {/* <div className="quick-add-image-container">
             <input
               type="file"
               id="imageUpload"
@@ -824,16 +1017,25 @@ const Panel: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21,15 16,10 5,21"/>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21,15 16,10 5,21" />
                   </svg>
                   Take a Picture, It'll Last Longer
                 </>
               )}
             </button>
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -856,7 +1058,8 @@ const Panel: React.FC = () => {
                 'Unauthorized - move to search or synthesis to use this'
               ) && (
                 <div className="notice-message">
-                  For real-time search-as-you-type functionality, upgrade to the Search tier in your YCB dashboard.
+                  For real-time search-as-you-type functionality, upgrade to the
+                  Search tier in your YCB dashboard.
                 </div>
               )}
             </>
@@ -884,7 +1087,8 @@ const Panel: React.FC = () => {
                 {results.length > 0 && (
                   <div className="results-header">
                     <span className="results-count">
-                      {results.length} semantic {results.length === 1 ? 'result' : 'results'}
+                      {results.length} semantic{' '}
+                      {results.length === 1 ? 'result' : 'results'}
                     </span>
                   </div>
                 )}
@@ -892,7 +1096,7 @@ const Panel: React.FC = () => {
                 {/* Semantic search results */}
                 {results.map((item) => (
                   <div className="result-card" key={item.id}>
-                    <div 
+                    <div
                       className="result-clickable"
                       onClick={() => handleSemanticResultClick(item)}
                     >
@@ -903,46 +1107,61 @@ const Panel: React.FC = () => {
                         {item.metadata?.title || 'Untitled'}
                       </h3>
                       <div className="result-content">
-                        {item.metadata?.ogDescription || item.data || 'No description available'}
+                        {item.metadata?.ogDescription ||
+                          item.data ||
+                          'No description available'}
                       </div>
-                      
-                      {item.metadata?.ogImages && item.metadata.ogImages.length > 0 && (
-                        <div className="result-image">
-                          <img src={item.metadata.ogImages[0]} alt="Preview" />
-                        </div>
-                      )}
-                      
+
+                      {item.metadata?.ogImages &&
+                        item.metadata.ogImages.length > 0 && (
+                          <div className="result-image">
+                            <img
+                              src={item.metadata.ogImages[0]}
+                              alt="Preview"
+                            />
+                          </div>
+                        )}
+
                       {item.image && (
                         <div className="result-image">
                           <img src={item.image} alt="Attachment" />
                         </div>
                       )}
-                      
+
                       <div className="result-metadata">
                         {item.metadata?.author && (
                           <div className="result-meta-item">
                             <span className="result-meta-label">Source:</span>
-                            <span 
-                              className="result-meta-value" 
+                            <span
+                              className="result-meta-value"
                               title={item.metadata.author}
                             >
                               {(() => {
                                 try {
                                   // Check if URL contains yourcommonbase.com
-                                  if (item.metadata.author.includes('yourcommonbase.com')) {
+                                  if (
+                                    item.metadata.author.includes(
+                                      'yourcommonbase.com'
+                                    )
+                                  ) {
                                     return 'Your Commonbase';
                                   }
-                                  
+
                                   const url = new URL(item.metadata.author);
                                   return url.hostname.replace('www.', '');
                                 } catch {
                                   // Check if URL contains yourcommonbase.com (for relative URLs)
-                                  if (item.metadata.author.includes('yourcommonbase.com')) {
+                                  if (
+                                    item.metadata.author.includes(
+                                      'yourcommonbase.com'
+                                    )
+                                  ) {
                                     return 'Your Commonbase';
                                   }
-                                  
-                                  return item.metadata.author.length > 30 
-                                    ? item.metadata.author.substring(0, 30) + '...' 
+
+                                  return item.metadata.author.length > 30
+                                    ? item.metadata.author.substring(0, 30) +
+                                        '...'
                                     : item.metadata.author;
                                 }
                               })()}
@@ -951,12 +1170,16 @@ const Panel: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    
-                    <button 
+
+                    <button
                       className="add-comment-btn"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleAddComment(item.id, item.metadata?.title || 'Untitled', item.metadata?.author || '');
+                        handleAddComment(
+                          item.id,
+                          item.metadata?.title || 'Untitled',
+                          item.metadata?.author || ''
+                        );
                       }}
                       title="Add comment"
                     >
@@ -966,7 +1189,11 @@ const Panel: React.FC = () => {
                 ))}
               </div>
 
-              <InfiniteHits hitComponent={(props: any) => <Hit {...props} onAddComment={handleAddComment} />} />
+              <InfiniteHits
+                hitComponent={(props: any) => (
+                  <Hit {...props} onAddComment={handleAddComment} />
+                )}
+              />
             </InstantSearch>
           )}
         </>
@@ -985,94 +1212,115 @@ const Panel: React.FC = () => {
           {results.length > 0 && (
             <div className="results-header">
               <span className="results-count">
-                {results.length} semantic {results.length === 1 ? 'result' : 'results'}
+                {results.length} semantic{' '}
+                {results.length === 1 ? 'result' : 'results'}
               </span>
             </div>
           )}
 
           {results.map((item) => (
             <div className="result-card" key={item.id}>
-              <div 
+              <div
                 className="result-clickable"
                 onClick={() => handleSemanticResultClick(item)}
               >
-              <div className="result-similarity">
-                {Math.round(item.similarity * 100)}% match
-              </div>
-              <h3 className="result-title">
-                {item.metadata?.title || 'Untitled'}
-              </h3>
-              <div className="result-content">
-                {item.metadata?.ogDescription || item.data || 'No description available'}
-              </div>
-              
-              {item.metadata?.ogImages && item.metadata.ogImages.length > 0 && (
-                <div className="result-image">
-                  <img src={item.metadata.ogImages[0]} alt="Preview" />
+                <div className="result-similarity">
+                  {Math.round(item.similarity * 100)}% match
                 </div>
-              )}
-              
-              {item.image && (
-                <div className="result-image">
-                  <img src={item.image} alt="Attachment" />
+                <h3 className="result-title">
+                  {item.metadata?.title || 'Untitled'}
+                </h3>
+                <div className="result-content">
+                  {item.metadata?.ogDescription ||
+                    item.data ||
+                    'No description available'}
                 </div>
-              )}
-              
-              <div className="result-metadata">
-                {item.metadata?.author && (
-                  <div className="result-meta-item">
-                    <span className="result-meta-label">Source:</span>
-                    <span 
-                      className="result-meta-value" 
-                      title={item.metadata.author}
-                    >
-                      {(() => {
-                        try {
-                          // Check if URL contains yourcommonbase.com
-                          if (item.metadata.author.includes('yourcommonbase.com')) {
-                            return 'Your Commonbase';
-                          }
-                          
-                          const url = new URL(item.metadata.author);
-                          return url.hostname.replace('www.', '');
-                        } catch {
-                          // Check if URL contains yourcommonbase.com (for relative URLs)
-                          if (item.metadata.author.includes('yourcommonbase.com')) {
-                            return 'Your Commonbase';
-                          }
-                          
-                          return item.metadata.author.length > 30 
-                            ? item.metadata.author.substring(0, 30) + '...' 
-                            : item.metadata.author;
-                        }
-                      })()}
-                    </span>
+
+                {item.metadata?.ogImages &&
+                  item.metadata.ogImages.length > 0 && (
+                    <div className="result-image">
+                      <img src={item.metadata.ogImages[0]} alt="Preview" />
+                    </div>
+                  )}
+
+                {item.image && (
+                  <div className="result-image">
+                    <img src={item.image} alt="Attachment" />
                   </div>
                 )}
+
+                <div className="result-metadata">
+                  {item.metadata?.author && (
+                    <div className="result-meta-item">
+                      <span className="result-meta-label">Source:</span>
+                      <span
+                        className="result-meta-value"
+                        title={item.metadata.author}
+                      >
+                        {(() => {
+                          try {
+                            // Check if URL contains yourcommonbase.com
+                            if (
+                              item.metadata.author.includes(
+                                'yourcommonbase.com'
+                              )
+                            ) {
+                              return 'Your Commonbase';
+                            }
+
+                            const url = new URL(item.metadata.author);
+                            return url.hostname.replace('www.', '');
+                          } catch {
+                            // Check if URL contains yourcommonbase.com (for relative URLs)
+                            if (
+                              item.metadata.author.includes(
+                                'yourcommonbase.com'
+                              )
+                            ) {
+                              return 'Your Commonbase';
+                            }
+
+                            return item.metadata.author.length > 30
+                              ? item.metadata.author.substring(0, 30) + '...'
+                              : item.metadata.author;
+                          }
+                        })()}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
+
+              <button
+                className="add-comment-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAddComment(
+                    item.id,
+                    item.metadata?.title || 'Untitled',
+                    item.metadata?.author || ''
+                  );
+                }}
+                title="Add comment"
+              >
+                +
+              </button>
             </div>
-            
-            <button 
-              className="add-comment-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleAddComment(item.id, item.metadata?.title || 'Untitled', item.metadata?.author || '');
-              }}
-              title="Add comment"
-            >
-              +
-            </button>
-          </div>
           ))}
         </div>
       )}
 
       {/* Comment Modal */}
       {showCommentModal && (
-        <div className="modal-overlay" onClick={() => setShowCommentModal(false)}>
+        <div
+          className="modal-overlay"
+          onClick={() => setShowCommentModal(false)}
+        >
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3 className="modal-title">Add Comment</h3>
-            <p className="modal-subtitle">Commenting on: {selectedEntryTitle}</p>
+            <p className="modal-subtitle">
+              Commenting on: {selectedEntryTitle}
+            </p>
             <textarea
               className="modal-textarea"
               placeholder="Add your comment..."
@@ -1093,7 +1341,8 @@ const Panel: React.FC = () => {
               <button
                 className="modal-btn modal-btn-primary"
                 onClick={(e) => {
-                  const textarea = e.currentTarget.parentElement?.previousElementSibling as HTMLTextAreaElement;
+                  const textarea = e.currentTarget.parentElement
+                    ?.previousElementSibling as HTMLTextAreaElement;
                   submitComment(textarea?.value || '');
                 }}
               >
@@ -1106,9 +1355,7 @@ const Panel: React.FC = () => {
 
       {/* Toast Notification */}
       {toast && (
-        <div className={`toast toast-${toast.type}`}>
-          {toast.message}
-        </div>
+        <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
     </div>
   );

@@ -42,6 +42,7 @@ This is a Manifest V3 Chrome extension built with React 18 and Webpack 5. The ex
 ### API Integration
 
 The extension integrates with multiple YCB backend endpoints:
+
 - `https://yourcommonbase.com/backend/add` - Add content
 - `https://yourcommonbase.com/backend/addURL` - Add URLs
 - `https://yourcommonbase.com/backend/v2/addImage` - Add images
@@ -51,6 +52,7 @@ The extension integrates with multiple YCB backend endpoints:
 ### Webpack Configuration
 
 Entry points are configured in `webpack.config.js`:
+
 - `background`, `contentScript`, `devtools` - excluded from hot reload
 - React components support TypeScript and hot reloading
 - Assets are copied from `src/assets/` to build folder
@@ -58,6 +60,7 @@ Entry points are configured in `webpack.config.js`:
 ### Storage
 
 Uses Chrome Storage API:
+
 - `chrome.storage.local` - API keys, URLs, cache data
 - `chrome.storage.sync` - User preferences (Arc mode)
 

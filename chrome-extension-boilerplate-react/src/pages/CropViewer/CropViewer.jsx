@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('Crop viewer DOM loaded');
   console.log('Chrome APIs available:', !!window.chrome);
   console.log('Chrome storage available:', !!window.chrome?.storage);
-  
+
   loadScreenshotData();
   setupEventListeners();
 });
@@ -20,39 +20,41 @@ document.addEventListener('DOMContentLoaded', () => {
 // Load screenshot data from storage
 function loadScreenshotData() {
   console.log('Loading screenshot data...');
-  
+
   // Get screenshot ID from URL parameters
   const urlParams = new URLSearchParams(window.location.search);
   const screenshotId = urlParams.get('id');
   console.log('Screenshot ID from URL:', screenshotId);
-  
+
   if (!screenshotId) {
     showError('No screenshot ID provided');
     return;
   }
-  
+
   if (!window.chrome || !window.chrome.storage) {
     showError('Chrome APIs not available');
     return;
   }
-  
+
   try {
     const storageKey = `screenshot_${screenshotId}`;
     chrome.storage.local.get([storageKey], (result) => {
       console.log('Storage result:', result);
-      
+
       if (chrome.runtime.lastError) {
         console.error('Storage error:', chrome.runtime.lastError);
-        showError('Failed to load screenshot: ' + chrome.runtime.lastError.message);
+        showError(
+          'Failed to load screenshot: ' + chrome.runtime.lastError.message
+        );
         return;
       }
-      
+
       const screenshotData = result[storageKey];
       if (screenshotData) {
         const { imageData, tabInfo } = screenshotData;
         console.log('Found screenshot data, tabInfo:', tabInfo);
         console.log('Image data length:', imageData?.length);
-        
+
         originalImageData = imageData;
         originalTabInfo = tabInfo;
         displayImage(imageData);
@@ -73,7 +75,7 @@ function loadScreenshotData() {
 function displayImage(imageData) {
   const container = document.getElementById('cropContainer');
   const loading = document.getElementById('loading');
-  
+
   try {
     const img = document.createElement('img');
     img.className = 'crop-image';
@@ -84,48 +86,58 @@ function displayImage(imageData) {
     img.draggable = false;
     img.onload = () => {
       loading.style.display = 'none';
-      
+
       // Create overlay for crop selection
       const overlay = document.createElement('div');
       overlay.className = 'crop-overlay';
-      
+
       // Initialize default selection (centered square, 40% of smaller dimension)
       // Use natural dimensions for better accuracy across browsers
       const displayWidth = img.offsetWidth;
       const displayHeight = img.offsetHeight;
-      console.log('Image display dimensions:', displayWidth, 'x', displayHeight);
-      console.log('Image natural dimensions:', img.naturalWidth, 'x', img.naturalHeight);
-      
+      console.log(
+        'Image display dimensions:',
+        displayWidth,
+        'x',
+        displayHeight
+      );
+      console.log(
+        'Image natural dimensions:',
+        img.naturalWidth,
+        'x',
+        img.naturalHeight
+      );
+
       const minDimension = Math.min(displayWidth, displayHeight);
       const selectionSize = minDimension * 0.4; // Square selection
       const selectionX = (displayWidth - selectionSize) / 2;
       const selectionY = (displayHeight - selectionSize) / 2;
-      
+
       currentSelection = {
         x: selectionX,
         y: selectionY,
         width: selectionSize,
-        height: selectionSize
+        height: selectionSize,
       };
-      
+
       createSelectionUI(overlay);
-      
+
       container.appendChild(img);
       container.appendChild(overlay);
-      
+
       // Setup interaction after elements are in DOM
       setupImageInteraction(img, overlay);
-      
+
       // Enable save button
       document.getElementById('saveBtn').disabled = false;
-      
+
       updateSelection();
     };
-    
+
     img.onerror = () => {
       showError('Failed to load screenshot');
     };
-    
+
     img.src = imageData;
   } catch (error) {
     showError('Error displaying image: ' + error.message);
@@ -138,16 +150,16 @@ function createSelectionUI(overlay) {
   const selection = document.createElement('div');
   selection.className = 'crop-selection';
   selection.id = 'cropSelection';
-  
+
   // Resize handles
   const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'w', 'e'];
-  handles.forEach(position => {
+  handles.forEach((position) => {
     const handle = document.createElement('div');
     handle.className = `crop-handle ${position}`;
     handle.dataset.position = position;
     selection.appendChild(handle);
   });
-  
+
   overlay.appendChild(selection);
 }
 
@@ -156,19 +168,19 @@ function setupImageInteraction(img, overlay) {
   console.log('Setting up image interaction...');
   const selection = document.getElementById('cropSelection');
   console.log('Selection element:', selection);
-  
+
   if (!selection) {
     console.error('Selection element not found!');
     return;
   }
-  
+
   // Mouse down on overlay (start new selection)
   overlay.addEventListener('mousedown', (e) => {
     if (e.target === overlay) {
       startNewSelection(e, img);
     }
   });
-  
+
   // Mouse down on selection (start dragging)
   selection.addEventListener('mousedown', (e) => {
     if (e.target === selection) {
@@ -177,7 +189,7 @@ function setupImageInteraction(img, overlay) {
       startResizing(e, e.target.dataset.position);
     }
   });
-  
+
   // Mouse move
   document.addEventListener('mousemove', (e) => {
     if (isDragging) {
@@ -186,7 +198,7 @@ function setupImageInteraction(img, overlay) {
       handleResizing(e, img);
     }
   });
-  
+
   // Mouse up
   document.addEventListener('mouseup', () => {
     isDragging = false;
@@ -200,14 +212,14 @@ function startNewSelection(e, img) {
   const rect = img.getBoundingClientRect();
   const x = e.clientX - rect.left;
   const y = e.clientY - rect.top;
-  
+
   currentSelection = {
     x: x,
     y: y,
     width: 0,
-    height: 0
+    height: 0,
   };
-  
+
   isDragging = true;
   dragStart = { x: x, y: y };
   updateSelection();
@@ -218,7 +230,7 @@ function startDragging(e) {
   isDragging = true;
   dragStart = {
     x: e.clientX - currentSelection.x,
-    y: e.clientY - currentSelection.y
+    y: e.clientY - currentSelection.y,
   };
 }
 
@@ -232,12 +244,12 @@ function startResizing(e, handle) {
 // Handle dragging
 function handleDragging(e, img) {
   const rect = img.getBoundingClientRect();
-  
+
   if (isDragging && currentSelection.width === 0) {
     // Creating new selection
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     currentSelection.width = Math.abs(x - dragStart.x);
     currentSelection.height = Math.abs(y - dragStart.y);
     currentSelection.x = Math.min(x, dragStart.x);
@@ -246,25 +258,31 @@ function handleDragging(e, img) {
     // Moving existing selection
     currentSelection.x = e.clientX - dragStart.x;
     currentSelection.y = e.clientY - dragStart.y;
-    
+
     // Constrain to image bounds
-    currentSelection.x = Math.max(0, Math.min(currentSelection.x, rect.width - currentSelection.width));
-    currentSelection.y = Math.max(0, Math.min(currentSelection.y, rect.height - currentSelection.height));
+    currentSelection.x = Math.max(
+      0,
+      Math.min(currentSelection.x, rect.width - currentSelection.width)
+    );
+    currentSelection.y = Math.max(
+      0,
+      Math.min(currentSelection.y, rect.height - currentSelection.height)
+    );
   }
-  
+
   updateSelection();
 }
 
 // Handle resizing
 function handleResizing(e, img) {
   if (!isResizing) return;
-  
+
   const rect = img.getBoundingClientRect();
   const deltaX = e.clientX - dragStart.x;
   const deltaY = e.clientY - dragStart.y;
-  
+
   let newSelection = { ...currentSelection };
-  
+
   switch (resizeHandle) {
     case 'nw':
       newSelection.x += deltaX;
@@ -301,13 +319,19 @@ function handleResizing(e, img) {
       newSelection.width += deltaX;
       break;
   }
-  
+
   // Ensure minimum size and bounds
   newSelection.width = Math.max(20, newSelection.width);
   newSelection.height = Math.max(20, newSelection.height);
-  newSelection.x = Math.max(0, Math.min(newSelection.x, rect.width - newSelection.width));
-  newSelection.y = Math.max(0, Math.min(newSelection.y, rect.height - newSelection.height));
-  
+  newSelection.x = Math.max(
+    0,
+    Math.min(newSelection.x, rect.width - newSelection.width)
+  );
+  newSelection.y = Math.max(
+    0,
+    Math.min(newSelection.y, rect.height - newSelection.height)
+  );
+
   currentSelection = newSelection;
   dragStart = { x: e.clientX, y: e.clientY };
   updateSelection();
@@ -327,13 +351,13 @@ function updateSelection() {
 // Setup event listeners
 function setupEventListeners() {
   console.log('Setting up event listeners...');
-  
+
   const cancelBtn = document.getElementById('cancelBtn');
   const saveBtn = document.getElementById('saveBtn');
-  
+
   console.log('Cancel button:', cancelBtn);
   console.log('Save button:', saveBtn);
-  
+
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
       console.log('Cancel clicked');
@@ -342,7 +366,7 @@ function setupEventListeners() {
   } else {
     console.error('Cancel button not found');
   }
-  
+
   if (saveBtn) {
     saveBtn.addEventListener('click', () => {
       console.log('Save clicked');
@@ -359,34 +383,34 @@ function saveCroppedImage() {
     showError('Missing data for saving');
     return;
   }
-  
+
   const saveBtn = document.getElementById('saveBtn');
   saveBtn.disabled = true;
   saveBtn.textContent = 'Saving...';
-  
+
   try {
     // Create canvas for cropping
     const img = document.querySelector('.crop-image');
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    
+
     // Calculate scale factor between displayed image and original
     // Use offsetWidth/Height instead of getBoundingClientRect for better accuracy
     const displayWidth = img.offsetWidth;
     const displayHeight = img.offsetHeight;
     const scaleX = img.naturalWidth / displayWidth;
     const scaleY = img.naturalHeight / displayHeight;
-    
+
     console.log('Cropping calculation:');
     console.log('Display size:', displayWidth, 'x', displayHeight);
     console.log('Natural size:', img.naturalWidth, 'x', img.naturalHeight);
     console.log('Scale factors:', scaleX, scaleY);
     console.log('Selection:', currentSelection);
-    
+
     // Set canvas size to cropped area
     canvas.width = currentSelection.width * scaleX;
     canvas.height = currentSelection.height * scaleY;
-    
+
     // Create image from original data
     const originalImg = new Image();
     originalImg.onload = () => {
@@ -402,36 +426,35 @@ function saveCroppedImage() {
         canvas.width, // dest width
         canvas.height // dest height
       );
-      
+
       // Convert to data URL and send to background
       const croppedDataUrl = canvas.toDataURL('image/png');
-      
+
       // Get the comment from the textarea
       const commentBox = document.getElementById('commentBox');
       const comment = commentBox ? commentBox.value.trim() : '';
-      
+
       console.log('Sending cropped screenshot with comment:', comment);
       console.log('Tab info:', originalTabInfo);
-      
+
       chrome.runtime.sendMessage({
         action: 'uploadCroppedScreenshot',
         imageData: croppedDataUrl,
         tabInfo: originalTabInfo,
-        comment: comment // Include the optional comment
+        comment: comment, // Include the optional comment
       });
-      
+
       // Close window immediately - background processing will continue
       window.close();
     };
-    
+
     originalImg.onerror = () => {
       showError('Failed to process original image');
       saveBtn.disabled = false;
       saveBtn.textContent = 'Save to YCB';
     };
-    
+
     originalImg.src = originalImageData;
-    
   } catch (error) {
     showError('Error processing image: ' + error.message);
     saveBtn.disabled = false;

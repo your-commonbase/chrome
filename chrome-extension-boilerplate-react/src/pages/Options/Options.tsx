@@ -10,6 +10,7 @@ const Options: React.FC<Props> = ({ title }: Props) => {
   const [cbUrl, setCbUrl] = useState('');
   const [baseUrl, setBaseUrl] = useState('https://yourcommonbase.com');
   const [openAIAPIKey, setOpenAIAPIKey] = useState('');
+  const [hideRandomEntry, setHideRandomEntry] = useState(false);
 
   const handleSubmit = () => {
     chrome.storage.local.set({ apiKey }, () => {
@@ -20,6 +21,9 @@ const Options: React.FC<Props> = ({ title }: Props) => {
     });
     chrome.storage.local.set({ baseUrl }, () => {
       console.log('Base URL is set to ' + baseUrl);
+    });
+    chrome.storage.local.set({ hideRandomEntry }, () => {
+      console.log('Hide random entry is set to ' + hideRandomEntry);
     });
   };
 
@@ -32,6 +36,9 @@ const Options: React.FC<Props> = ({ title }: Props) => {
     });
     chrome.storage.local.get(['baseUrl'], (result) => {
       setBaseUrl(result.baseUrl || 'https://yourcommonbase.com');
+    });
+    chrome.storage.local.get(['hideRandomEntry'], (result) => {
+      setHideRandomEntry(result.hideRandomEntry || false);
     });
   };
 
@@ -127,6 +134,16 @@ const Options: React.FC<Props> = ({ title }: Props) => {
       <label>
         <input type="checkbox" id="arcMode" />
         I’m using Arc Browser (use tab instead of side panel)
+      </label>
+      <br />
+      <br />
+      <label>
+        <input
+          type="checkbox"
+          checked={hideRandomEntry}
+          onChange={(e) => setHideRandomEntry(e.target.checked)}
+        />
+        Hide random entry from Panel by default
       </label>
     </div>
   );

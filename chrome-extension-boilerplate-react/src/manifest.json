@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Simple YCb",
-  "description": "simple upload to ycb alpha server",
+  "name": "Your Commonbase",
+  "description": "Your Commonbase Chrome Extension",
   "options_page": "options.html",
   "background": { "service_worker": "background.bundle.js" },
   "action": {
@@ -37,7 +37,15 @@
       "description": "Open YCB dashboard"
     }
   },
-  "permissions": ["contextMenus", "activeTab", "scripting", "storage", "sidePanel", "unlimitedStorage", "tabs"],
+  "permissions": [
+    "contextMenus",
+    "activeTab",
+    "scripting",
+    "storage",
+    "sidePanel",
+    "unlimitedStorage",
+    "tabs"
+  ],
   "web_accessible_resources": [
     {
       "resources": ["content.styles.css", "icon-128.png"],
