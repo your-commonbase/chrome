@@ -167,7 +167,7 @@ function CustomSearchBox({
         className="search-button"
       >
         {isSearching && <div className="loading-spinner"></div>}
-        {isSearching ? 'Searching...' : 'Search'}
+        {isSearching ? 'Searching...' : 'Semantic Search'}
       </button>
       {localQuery && (
         <button
@@ -185,7 +185,7 @@ function CustomSearchBox({
           Clear
         </button>
       )}
-      {localQuery && (
+      {/* {localQuery && (
         <button
           type="button"
           onClick={() => {
@@ -213,7 +213,7 @@ function CustomSearchBox({
           </svg>
           Google
         </button>
-      )}
+      )} */}
     </div>
   );
 }
