@@ -587,7 +587,9 @@ const Panel: React.FC = () => {
   };
 
   // Helper function to get YouTube timestamp and create timestamped URL
-  const getYouTubeTimestamp = async (): Promise<string | null> => {
+  const getYouTubeTimestamp = async (
+    subtractSeconds: number = 0
+  ): Promise<string | null> => {
     try {
       if (!currentActiveTab?.url?.includes('youtube.com/watch')) {
         return null;
@@ -596,12 +598,16 @@ const Panel: React.FC = () => {
       // Get current timestamp from the active YouTube tab
       const results = await chrome.scripting.executeScript({
         target: { tabId: currentActiveTab.id! },
-        func: () => {
+        func: (subtract: number) => {
           try {
             const video = document.querySelector('video') as HTMLVideoElement;
             if (!video) return null;
 
-            const currentTime = Math.floor(video.currentTime);
+            let currentTime = Math.floor(video.currentTime);
+
+            // Subtract the specified seconds, but don't go below 0
+            currentTime = Math.max(0, currentTime - subtract);
+
             const minutes = Math.floor(currentTime / 60);
             const seconds = currentTime % 60;
             const timestamp = `${minutes}:${seconds
@@ -617,6 +623,7 @@ const Panel: React.FC = () => {
             return null;
           }
         },
+        args: [subtractSeconds],
       });
 
       const result = results[0]?.result as {
@@ -653,13 +660,30 @@ const Panel: React.FC = () => {
         return;
       }
 
+      // Check for [-Ns] pattern in the comment to subtract seconds from timestamp
+      let subtractSeconds = 0;
+      let cleanedText = quickAddText;
+
+      // Match pattern like [-10s], [-15s], etc.
+      const timestampPattern = /\[-(\d+)s\]/g;
+      const matches = Array.from(quickAddText.matchAll(timestampPattern));
+
+      if (matches.length > 0) {
+        // Use the last match if multiple are found
+        const lastMatch = matches[matches.length - 1];
+        subtractSeconds = parseInt(lastMatch[1], 10);
+
+        // Remove all [-Ns] patterns from the text
+        cleanedText = quickAddText.replace(timestampPattern, '').trim();
+      }
+
       // Get YouTube timestamp if applicable
-      const timestampLink = await getYouTubeTimestamp();
+      const timestampLink = await getYouTubeTimestamp(subtractSeconds);
 
       // Append timestamp to comment data if available
       const commentData = timestampLink
-        ? `${quickAddText}\n\n${timestampLink}`
-        : quickAddText;
+        ? `${cleanedText}\n\n${timestampLink}`
+        : cleanedText;
 
       const baseUrl = await getBaseUrl();
       const response = await fetch(`${baseUrl}/backend/add`, {
