@@ -4,6 +4,22 @@ import { instantMeiliSearch } from '@meilisearch/instant-meilisearch';
 import { InstantSearch, InfiniteHits } from 'react-instantsearch';
 import CustomSearchBox from './CustomSearchBox';
 
+// URLs that should include OG description in tab titles
+const DESCRIPTION_ENHANCED_URLS = [
+  'instagram.com',
+  'netflix.com',
+];
+
+// Helper function to check if URL should include OG description
+const shouldIncludeDescription = (url: string): boolean => {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return DESCRIPTION_ENHANCED_URLS.some(domain => hostname.includes(domain));
+  } catch {
+    return false;
+  }
+};
+
 // Helper function to get base URL from storage with fallback
 const getBaseUrl = (): Promise<string> => {
   return new Promise((resolve) => {
@@ -212,6 +228,7 @@ const Panel: React.FC = () => {
   const [activeTabs, setActiveTabs] = useState<chrome.tabs.Tab[]>([]);
   const [currentActiveTab, setCurrentActiveTab] =
     useState<chrome.tabs.Tab | null>(null);
+  const [tabDescriptions, setTabDescriptions] = useState<{ [key: number]: string }>({});
   const [isAddingTab, setIsAddingTab] = useState<{ [key: string]: boolean }>(
     {}
   );
@@ -258,6 +275,13 @@ const Panel: React.FC = () => {
         // Find the current active tab
         const activeTab = tabs.find((tab) => tab.active);
         setCurrentActiveTab(activeTab || null);
+        
+        // Fetch descriptions for tabs that match our enhanced URL list
+        tabs.forEach((tab) => {
+          if (tab.url && shouldIncludeDescription(tab.url)) {
+            fetchTabDescription(tab);
+          }
+        });
       });
     };
 
@@ -534,6 +558,33 @@ const Panel: React.FC = () => {
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  };
+
+  // Function to fetch OG description for a tab
+  const fetchTabDescription = async (tab: chrome.tabs.Tab) => {
+    if (!tab.id || !tab.url || !shouldIncludeDescription(tab.url)) return;
+
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const ogDescriptionTag = document.querySelector('meta[property="og:description"]');
+          const descriptionTag = document.querySelector('meta[name="description"]');
+          return ogDescriptionTag?.getAttribute('content') || 
+                 descriptionTag?.getAttribute('content') || 
+                 '';
+        },
+      });
+
+      if (results && results[0] && results[0].result) {
+        setTabDescriptions(prev => ({
+          ...prev,
+          [tab.id!]: results[0].result
+        }));
+      }
+    } catch (error) {
+      console.log('Could not fetch description for tab:', tab.url, error);
+    }
   };
 
   const handleAddComment = (
@@ -893,6 +944,16 @@ const Panel: React.FC = () => {
         return;
       }
 
+      // Create enhanced title using the same logic as the tab display
+      const baseTitle = tab.title || 'Untitled';
+      const description = tab.id ? tabDescriptions[tab.id] : '';
+      const enhancedTitle = (() => {
+        if (description && tab.url && shouldIncludeDescription(tab.url)) {
+          return `${baseTitle} - ${description}`;
+        }
+        return baseTitle;
+      })();
+
       const baseUrl = await getBaseUrl();
       const response = await fetch(`${baseUrl}/backend/add`, {
         method: 'POST',
@@ -901,9 +962,9 @@ const Panel: React.FC = () => {
           Authorization: `Bearer ${result.apiKey}`,
         },
         body: JSON.stringify({
-          data: tab.title || 'Untitled',
+          data: enhancedTitle,
           metadata: {
-            title: tab.title || 'Untitled',
+            title: enhancedTitle,
             author: tab.url,
           },
           "duplicate_check": {
@@ -1673,7 +1734,18 @@ const Panel: React.FC = () => {
                   />
                 </div>
                 <div className="tab-info">
-                  <span className="tab-title">{tab.title || 'Untitled'}</span>
+                  <span className="tab-title">
+                    {(() => {
+                      const baseTitle = tab.title || 'Untitled';
+                      const description = tab.id ? tabDescriptions[tab.id] : '';
+                      
+                      if (description && tab.url && shouldIncludeDescription(tab.url)) {
+                        return `${baseTitle} - ${description}`;
+                      }
+                      
+                      return baseTitle;
+                    })()}
+                  </span>
                   <span className="tab-url">
                     {tab.url
                       ? (() => {
