@@ -1182,3 +1182,76 @@ body {
   text-align: center;
   font-weight: 500;
 }
+
+/* Instagram Upload Section Styles */
+.instagram-upload-section {
+  margin: 16px 0 24px 0;
+  background: linear-gradient(135deg, rgba(225, 48, 108, 0.1), rgba(131, 58, 180, 0.1));
+  border: 1px solid rgba(225, 48, 108, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  animation: fadeIn 0.3s ease;
+}
+
+.instagram-buttons-container {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.instagram-upload-btn {
+  flex: 1;
+  padding: 14px 20px;
+  background: linear-gradient(45deg, #e1306c, #833ab4);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.instagram-upload-btn:hover:not(:disabled) {
+  background: linear-gradient(45deg, #c1275a, #6b2d94);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(225, 48, 108, 0.3);
+}
+
+.instagram-upload-btn:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  cursor: not-allowed;
+  transform: none;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.instagram-stop-btn {
+  padding: 14px 20px;
+  background: #666666;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 80px;
+}
+
+.instagram-stop-btn:hover {
+  background: #444444;
+  transform: translateY(-1px);
+}

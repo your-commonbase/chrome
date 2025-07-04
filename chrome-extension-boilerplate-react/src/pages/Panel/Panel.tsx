@@ -220,6 +220,11 @@ const Panel: React.FC = () => {
   const [skipCount, setSkipCount] = useState<string>('0');
   const [stopIndex, setStopIndex] = useState<string>('');
   const shouldStopUploadRef = useRef<boolean>(false);
+  const [isUploadingIgSaved, setIsUploadingIgSaved] = useState<boolean>(false);
+  const [igSavedProgress, setIgSavedProgress] = useState<{ current: number; total: number; currentTitle: string }>({ current: 0, total: 0, currentTitle: '' });
+  const [igSkipCount, setIgSkipCount] = useState<string>('0');
+  const [igStopIndex, setIgStopIndex] = useState<string>('');
+  const shouldStopIgUploadRef = useRef<boolean>(false);
 
   const getToken = async (token: string) => {
     const baseUrl = await getBaseUrl();
@@ -901,6 +906,13 @@ const Panel: React.FC = () => {
             title: tab.title || 'Untitled',
             author: tab.url,
           },
+          "duplicate_check": {
+              "fields": {
+                  "metadata": {
+                      "author": tab.url
+                  }
+              }
+          },
         }),
       });
 
@@ -1086,6 +1098,13 @@ const Panel: React.FC = () => {
                 title: videoData,
                 author: video.url,
               },
+              "duplicate_check": {
+                  "fields": {
+                      "metadata": {
+                          "author": video.url
+                      }
+                  }
+              },
             }),
           });
 
@@ -1132,8 +1151,302 @@ const Panel: React.FC = () => {
     shouldStopUploadRef.current = true;
   };
 
+  const handleUploadIgSaved = async () => {
+    if (!currentActiveTab?.url?.includes('instagram.com') || !currentActiveTab?.url?.includes('/saved/')) {
+      showToast('Please navigate to Instagram Saved Posts page first', 'error');
+      return;
+    }
+
+    setIsUploadingIgSaved(true);
+    shouldStopIgUploadRef.current = false;
+    setIgSavedProgress({ current: 0, total: 0, currentTitle: 'Collecting saved posts...' });
+
+    try {
+      const result = await new Promise<{ apiKey?: string }>((resolve) => {
+        chrome.storage.local.get(['apiKey'], resolve);
+      });
+
+      if (!result.apiKey) {
+        showToast('API key not found. Please check your settings.', 'error');
+        return;
+      }
+
+      // Extract all saved post data from the current page and auto-paginate
+      const extractResults = await chrome.scripting.executeScript({
+        target: { tabId: currentActiveTab.id! },
+        func: () => {
+          return new Promise((resolve) => {
+            const posts = [];
+            let hasMoreContent = true;
+            let attempts = 0;
+            const maxAttempts = 50;
+
+            // Function to extract post data from current viewport
+            const extractCurrentPosts = () => {
+              const postElements = document.querySelectorAll('article img[alt], a img[alt]');
+              const currentPosts = [];
+              
+              postElements.forEach((element) => {
+                const img = element;
+                const postLink = img.closest('a');
+                
+                if (img && postLink) {
+                  const alt = img.getAttribute('alt');
+                  const href = postLink.href;
+                  
+                  if (alt && href && href.includes('/p/')) {
+                    const existingPost = currentPosts.find(p => p.url === href);
+                    if (!existingPost) {
+                      currentPosts.push({ url: href, alt: alt.trim() });
+                    }
+                  }
+                }
+              });
+              
+              return currentPosts;
+            };
+
+            // Function to scroll and wait for new content
+            const scrollAndWait = (callback) => {
+              const beforeCount = extractCurrentPosts().length;
+              
+              // Scroll to bottom of the page
+              window.scrollTo(0, document.body.scrollHeight);
+              
+              // Wait for new content to load
+              setTimeout(() => {
+                const afterCount = extractCurrentPosts().length;
+                callback(afterCount > beforeCount);
+              }, 3000);
+            };
+
+            // Initial extraction
+            const initialPosts = extractCurrentPosts();
+            posts.push(...initialPosts);
+
+            // Auto-paginate by scrolling
+            const processNext = () => {
+              if (!hasMoreContent || attempts >= maxAttempts) {
+                resolve({
+                  posts: posts,
+                  totalFound: posts.length,
+                  pagesScrolled: attempts
+                });
+                return;
+              }
+
+              scrollAndWait((foundNewContent) => {
+                if (foundNewContent) {
+                  const newPosts = extractCurrentPosts();
+                  newPosts.forEach(post => {
+                    const existing = posts.find(p => p.url === post.url);
+                    if (!existing) {
+                      posts.push(post);
+                    }
+                  });
+                } else {
+                  hasMoreContent = false;
+                }
+                
+                attempts++;
+                
+                // Continue processing
+                setTimeout(processNext, 500);
+              });
+            };
+
+            // Start processing
+            processNext();
+          });
+        },
+      });
+
+      const extractResult = extractResults[0].result;
+      if (!extractResult || extractResult.posts.length === 0) {
+        showToast('No saved posts found on this page', 'error');
+        return;
+      }
+
+      const skipPosts = parseInt(igSkipCount) || 0;
+      const stopAt = parseInt(igStopIndex) || extractResult.posts.length;
+      const endIndex = Math.min(stopAt, extractResult.posts.length);
+      const postsToProcess = extractResult.posts.slice(skipPosts, endIndex);
+      
+      const rangeText = igStopIndex 
+        ? `Processing posts ${skipPosts + 1} to ${endIndex}...`
+        : skipPosts > 0 
+          ? `Skipping first ${skipPosts} posts...` 
+          : 'Starting upload...';
+      
+      setIgSavedProgress({ 
+        current: 0, 
+        total: postsToProcess.length, 
+        currentTitle: rangeText
+      });
+
+      const baseUrl = await getBaseUrl();
+      let successCount = 0;
+      let duplicateCount = 0;
+
+      // Upload posts one by one
+      for (let i = 0; i < postsToProcess.length; i++) {
+        // Check if user wants to stop
+        if (shouldStopIgUploadRef.current) {
+          showToast('Upload stopped by user', 'error');
+          break;
+        }
+
+        const post = postsToProcess[i];
+        const actualPostNumber = skipPosts + i + 1;
+        
+        setIgSavedProgress({ 
+          current: i + 1, 
+          total: postsToProcess.length, 
+          currentTitle: `#${actualPostNumber}: ${post.alt}` 
+        });
+
+        // Add glow border to currently processing post
+        chrome.scripting.executeScript({
+          target: { tabId: currentActiveTab.id! },
+          func: (postUrl) => {
+            // Inject glow styles if not already present
+            if (!document.getElementById('ig-glow-styles')) {
+              const style = document.createElement('style');
+              style.id = 'ig-glow-styles';
+              style.textContent = `
+                .ig-processing-glow {
+                  position: relative;
+                  border: 3px solid #e1306c !important;
+                  border-radius: 12px !important;
+                  box-shadow: 0 0 20px rgba(225, 48, 108, 0.6), 
+                              0 0 40px rgba(225, 48, 108, 0.4),
+                              inset 0 0 20px rgba(225, 48, 108, 0.1) !important;
+                  animation: igGlowPulse 2s infinite !important;
+                  z-index: 9999 !important;
+                }
+                
+                @keyframes igGlowPulse {
+                  0%, 100% { 
+                    box-shadow: 0 0 20px rgba(225, 48, 108, 0.6), 
+                                0 0 40px rgba(225, 48, 108, 0.4),
+                                inset 0 0 20px rgba(225, 48, 108, 0.1);
+                  }
+                  50% { 
+                    box-shadow: 0 0 30px rgba(225, 48, 108, 0.8), 
+                                0 0 60px rgba(225, 48, 108, 0.6),
+                                inset 0 0 30px rgba(225, 48, 108, 0.2);
+                  }
+                }
+              `;
+              document.head.appendChild(style);
+            }
+
+            // Remove previous glow
+            const previousGlow = document.querySelector('.ig-processing-glow');
+            if (previousGlow) {
+              previousGlow.classList.remove('ig-processing-glow');
+            }
+
+            // Find the current post and add glow
+            try {
+              const links = document.querySelectorAll('a[href*="/p/"]');
+              for (const link of links) {
+                if (link.href === postUrl) {
+                  // Find the closest article container or the link itself
+                  const container = link.closest('article') || link;
+                  container.classList.add('ig-processing-glow');
+                  container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  break;
+                }
+              }
+            } catch (error) {
+              console.log('Could not find Instagram post for glow effect:', error);
+            }
+          },
+          args: [post.url],
+        }).catch(err => console.log('Could not add glow effect:', err));
+
+        try {
+          const response = await fetch(`${baseUrl}/backend/add`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${result.apiKey}`,
+            },
+            body: JSON.stringify({
+              data: post.alt,
+              metadata: {
+                title: 'Instagram Saved',
+                author: post.url,
+              },
+              "duplicate_check": {
+                  "fields": {
+                      "metadata": {
+                          "author": post.url
+                      }
+                  }
+              },
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.isDuplicate) {
+              console.log('Duplicate Instagram post skipped:', post.alt, post.url);
+              duplicateCount++;
+            } else {
+              console.log('Instagram post uploaded successfully:', post.alt, post.url);
+              successCount++;
+            }
+          } else {
+            console.error(`Failed to upload Instagram post "${post.alt}":`, response.statusText);
+            if (response.status === 429) {
+              showToast('Rate limited. Waiting longer between requests...', 'error');
+            }
+          }
+        } catch (error) {
+          console.error(`Error uploading Instagram post "${post.alt}":`, error);
+        }
+
+        // Remove glow effect from current post
+        chrome.scripting.executeScript({
+          target: { tabId: currentActiveTab.id! },
+          func: () => {
+            const currentGlow = document.querySelector('.ig-processing-glow');
+            if (currentGlow) {
+              currentGlow.classList.remove('ig-processing-glow');
+            }
+          },
+        }).catch(err => console.log('Could not remove glow effect:', err));
+
+        // Delay between requests to avoid rate limiting (2 seconds)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      if (!shouldStopIgUploadRef.current) {
+        showToast(
+          `Upload complete! ${successCount} new posts added, ${duplicateCount} duplicates skipped`,
+          'success'
+        );
+      }
+    } catch (error) {
+      console.error('Error uploading Instagram saved posts:', error);
+      showToast('Failed to upload Instagram saved posts. Please try again.', 'error');
+    } finally {
+      setIsUploadingIgSaved(false);
+      shouldStopIgUploadRef.current = false;
+      setIgSavedProgress({ current: 0, total: 0, currentTitle: '' });
+    }
+  };
+
+  const handleStopIgUpload = () => {
+    shouldStopIgUploadRef.current = true;
+  };
+
   // Check if current tab is YouTube liked videos page
   const isYouTubeLikedVideosPage = currentActiveTab?.url?.includes('youtube.com/playlist?list=LL');
+  // Check if current tab is Instagram saved posts page
+  const isInstagramSavedPage = currentActiveTab?.url?.includes('instagram.com') && currentActiveTab?.url?.includes('/saved/');
 
   return (
     <div className="container">
@@ -1237,6 +1550,98 @@ const Panel: React.FC = () => {
                 </div>
                 <span className="progress-text">
                   {likedVideosProgress.current} / {likedVideosProgress.total} videos processed
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Instagram Saved Posts Upload Section */}
+        {isInstagramSavedPage && (
+          <div className="instagram-upload-section">
+            {/* Skip Posts Input */}
+            {!isUploadingIgSaved && (
+              <div className="skip-videos-container">
+                <div className="range-inputs-row">
+                  <div className="range-input-group">
+                    <label className="skip-videos-label">
+                      Start at position:
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="999999"
+                      value={igSkipCount}
+                      onChange={(e) => setIgSkipCount(e.target.value)}
+                      className="skip-videos-input"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="range-input-group">
+                    <label className="skip-videos-label">
+                      Stop at position (optional):
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="999999"
+                      value={igStopIndex}
+                      onChange={(e) => setIgStopIndex(e.target.value)}
+                      className="skip-videos-input"
+                      placeholder="All posts"
+                    />
+                  </div>
+                </div>
+                <span className="skip-videos-help">
+                  Start: 50, Stop: 100 = Process posts #51 to #100 (count from 1)
+                </span>
+              </div>
+            )}
+            
+            <div className="instagram-buttons-container">
+              <button
+                className="instagram-upload-btn"
+                onClick={handleUploadIgSaved}
+                disabled={isUploadingIgSaved}
+              >
+                {isUploadingIgSaved ? (
+                  <>
+                    <div className="loading-spinner"></div>
+                    Uploading {igSavedProgress.current}/{igSavedProgress.total} posts...
+                  </>
+                ) : (
+                  'Upload All Saved Posts to YCB'
+                )}
+              </button>
+              {isUploadingIgSaved && (
+                <button
+                  className="instagram-stop-btn"
+                  onClick={handleStopIgUpload}
+                >
+                  Stop
+                </button>
+              )}
+            </div>
+            {isUploadingIgSaved && (
+              <div className="upload-progress">
+                {igSavedProgress.currentTitle && (
+                  <div className="current-video-title">
+                    <span className="current-video-label">Processing:</span>
+                    <span className="current-video-text">{igSavedProgress.currentTitle}</span>
+                  </div>
+                )}
+                <div className="progress-bar">
+                  <div 
+                    className="progress-fill" 
+                    style={{ 
+                      width: igSavedProgress.total > 0 
+                        ? `${(igSavedProgress.current / igSavedProgress.total) * 100}%` 
+                        : '0%'
+                    }}
+                  ></div>
+                </div>
+                <span className="progress-text">
+                  {igSavedProgress.current} / {igSavedProgress.total} posts processed
                 </span>
               </div>
             )}
