@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './Panel.css';
 import { instantMeiliSearch } from '@meilisearch/instant-meilisearch';
 import { InstantSearch, InfiniteHits } from 'react-instantsearch';
@@ -215,6 +215,11 @@ const Panel: React.FC = () => {
   const [isAddingTab, setIsAddingTab] = useState<{ [key: string]: boolean }>(
     {}
   );
+  const [isUploadingLikedVideos, setIsUploadingLikedVideos] = useState<boolean>(false);
+  const [likedVideosProgress, setLikedVideosProgress] = useState<{ current: number; total: number; currentTitle: string }>({ current: 0, total: 0, currentTitle: '' });
+  const [skipCount, setSkipCount] = useState<string>('0');
+  const [stopIndex, setStopIndex] = useState<string>('');
+  const shouldStopUploadRef = useRef<boolean>(false);
 
   const getToken = async (token: string) => {
     const baseUrl = await getBaseUrl();
@@ -912,6 +917,224 @@ const Panel: React.FC = () => {
     }
   };
 
+  const handleUploadLikedVideos = async () => {
+    if (!currentActiveTab?.url?.includes('youtube.com/playlist?list=LL')) {
+      showToast('Please navigate to YouTube Liked Videos page first', 'error');
+      return;
+    }
+
+    setIsUploadingLikedVideos(true);
+    shouldStopUploadRef.current = false;
+    setLikedVideosProgress({ current: 0, total: 0, currentTitle: 'Collecting videos...' });
+
+    try {
+      const result = await new Promise<{ apiKey?: string }>((resolve) => {
+        chrome.storage.local.get(['apiKey'], resolve);
+      });
+
+      if (!result.apiKey) {
+        showToast('API key not found. Please check your settings.', 'error');
+        return;
+      }
+
+      // Extract all video URLs and titles from the current page and auto-paginate
+      const extractResults = await chrome.scripting.executeScript({
+        target: { tabId: currentActiveTab.id! },
+        func: () => {
+          return new Promise((resolve) => {
+            const videos = [];
+            let hasMoreContent = true;
+            let attempts = 0;
+            const maxAttempts = 50;
+
+            // Function to extract video data from current viewport
+            const extractCurrentVideos = () => {
+              const videoElements = document.querySelectorAll('ytd-playlist-video-renderer');
+              const currentVideos = [];
+              
+              videoElements.forEach((element) => {
+                const linkElement = element.querySelector('a#video-title');
+                const channelElement = element.querySelector('ytd-channel-name a, #channel-name a');
+                
+                if (linkElement) {
+                  const href = linkElement.href;
+                  const title = linkElement.textContent?.trim() || 'Unknown Title';
+                  const channelName = channelElement?.textContent?.trim() || 'Unknown Channel';
+                  
+                  if (href && href.includes('/watch?v=')) {
+                    const existingVideo = currentVideos.find(v => v.url === href);
+                    if (!existingVideo) {
+                      currentVideos.push({ url: href, title, channelName });
+                    }
+                  }
+                }
+              });
+              
+              return currentVideos;
+            };
+
+            // Function to scroll and wait for new content
+            const scrollAndWait = (callback) => {
+              const beforeCount = extractCurrentVideos().length;
+              
+              // Scroll to bottom of the page
+              window.scrollTo(0, document.body.scrollHeight);
+              
+              // Wait for new content to load
+              setTimeout(() => {
+                const afterCount = extractCurrentVideos().length;
+                callback(afterCount > beforeCount);
+              }, 3000); // Increased wait time for YouTube's lazy loading
+            };
+
+            // Initial extraction
+            const initialVideos = extractCurrentVideos();
+            videos.push(...initialVideos);
+
+            // Auto-paginate by scrolling
+            const processNext = () => {
+              if (!hasMoreContent || attempts >= maxAttempts) {
+                resolve({
+                  videos: videos,
+                  totalFound: videos.length,
+                  pagesScrolled: attempts
+                });
+                return;
+              }
+
+              scrollAndWait((foundNewContent) => {
+                if (foundNewContent) {
+                  const newVideos = extractCurrentVideos();
+                  newVideos.forEach(video => {
+                    const existing = videos.find(v => v.url === video.url);
+                    if (!existing) {
+                      videos.push(video);
+                    }
+                  });
+                } else {
+                  hasMoreContent = false;
+                }
+                
+                attempts++;
+                
+                // Continue processing
+                setTimeout(processNext, 500); // Increased delay between scroll attempts
+              });
+            };
+
+            // Start processing
+            processNext();
+          });
+        },
+      });
+
+      const extractResult = extractResults[0].result;
+      if (!extractResult || extractResult.videos.length === 0) {
+        showToast('No liked videos found on this page', 'error');
+        return;
+      }
+
+      const skipVideos = parseInt(skipCount) || 0;
+      const stopAt = parseInt(stopIndex) || extractResult.videos.length;
+      const endIndex = Math.min(stopAt, extractResult.videos.length);
+      const videosToProcess = extractResult.videos.slice(skipVideos, endIndex);
+      
+      const rangeText = stopIndex 
+        ? `Processing videos ${skipVideos + 1} to ${endIndex}...`
+        : skipVideos > 0 
+          ? `Skipping first ${skipVideos} videos...` 
+          : 'Starting upload...';
+      
+      setLikedVideosProgress({ 
+        current: 0, 
+        total: videosToProcess.length, 
+        currentTitle: rangeText
+      });
+
+      const baseUrl = await getBaseUrl();
+      let successCount = 0;
+      let duplicateCount = 0;
+
+      // Upload videos one by one
+      for (let i = 0; i < videosToProcess.length; i++) {
+        // Check if user wants to stop
+        if (shouldStopUploadRef.current) {
+          showToast('Upload stopped by user', 'error');
+          break;
+        }
+
+        const video = videosToProcess[i];
+        const actualVideoNumber = skipVideos + i + 1;
+        const videoData = `${video.title} - ${video.channelName}`;
+        
+        setLikedVideosProgress({ 
+          current: i + 1, 
+          total: videosToProcess.length, 
+          currentTitle: `#${actualVideoNumber}: ${video.title}` 
+        });
+
+        try {
+          const response = await fetch(`${baseUrl}/backend/add`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${result.apiKey}`,
+            },
+            body: JSON.stringify({
+              data: videoData,
+              metadata: {
+                title: videoData,
+                author: video.url,
+              },
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data.isDuplicate) {
+              console.log('Duplicate video skipped:', videoData, video.url);
+              duplicateCount++;
+            } else {
+              console.log('Video uploaded successfully:', videoData, video.url);
+              successCount++;
+            }
+          } else {
+            console.error(`Failed to upload video "${videoData}":`, response.statusText);
+            if (response.status === 429) {
+              showToast('Rate limited. Waiting longer between requests...', 'error');
+            }
+          }
+        } catch (error) {
+          console.error(`Error uploading video "${videoData}":`, error);
+        }
+
+        // Longer delay between requests to avoid rate limiting (2 seconds)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      if (!shouldStopUploadRef.current) {
+        showToast(
+          `Upload complete! ${successCount} new videos added, ${duplicateCount} duplicates skipped`,
+          'success'
+        );
+      }
+    } catch (error) {
+      console.error('Error uploading liked videos:', error);
+      showToast('Failed to upload liked videos. Please try again.', 'error');
+    } finally {
+      setIsUploadingLikedVideos(false);
+      shouldStopUploadRef.current = false;
+      setLikedVideosProgress({ current: 0, total: 0, currentTitle: '' });
+    }
+  };
+
+  const handleStopUpload = () => {
+    shouldStopUploadRef.current = true;
+  };
+
+  // Check if current tab is YouTube liked videos page
+  const isYouTubeLikedVideosPage = currentActiveTab?.url?.includes('youtube.com/playlist?list=LL');
+
   return (
     <div className="container">
       <div className="panel-header">
@@ -927,6 +1150,98 @@ const Panel: React.FC = () => {
             Companion from here!
           </a>
         </p>
+
+        {/* YouTube Liked Videos Upload Section */}
+        {isYouTubeLikedVideosPage && (
+          <div className="youtube-upload-section">
+            {/* Skip Videos Input */}
+            {!isUploadingLikedVideos && (
+              <div className="skip-videos-container">
+                <div className="range-inputs-row">
+                  <div className="range-input-group">
+                    <label className="skip-videos-label">
+                      Start at position:
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="999999"
+                      value={skipCount}
+                      onChange={(e) => setSkipCount(e.target.value)}
+                      className="skip-videos-input"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="range-input-group">
+                    <label className="skip-videos-label">
+                      Stop at position (optional):
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="999999"
+                      value={stopIndex}
+                      onChange={(e) => setStopIndex(e.target.value)}
+                      className="skip-videos-input"
+                      placeholder="All videos"
+                    />
+                  </div>
+                </div>
+                <span className="skip-videos-help">
+                  Start: 200, Stop: 250 = Process videos #201 to #250
+                </span>
+              </div>
+            )}
+            
+            <div className="youtube-buttons-container">
+              <button
+                className="youtube-upload-btn"
+                onClick={handleUploadLikedVideos}
+                disabled={isUploadingLikedVideos}
+              >
+                {isUploadingLikedVideos ? (
+                  <>
+                    <div className="loading-spinner"></div>
+                    Uploading {likedVideosProgress.current}/{likedVideosProgress.total} videos...
+                  </>
+                ) : (
+                  'Upload All Liked Videos to YCB'
+                )}
+              </button>
+              {isUploadingLikedVideos && (
+                <button
+                  className="youtube-stop-btn"
+                  onClick={handleStopUpload}
+                >
+                  Stop
+                </button>
+              )}
+            </div>
+            {isUploadingLikedVideos && (
+              <div className="upload-progress">
+                {likedVideosProgress.currentTitle && (
+                  <div className="current-video-title">
+                    <span className="current-video-label">Processing:</span>
+                    <span className="current-video-text">{likedVideosProgress.currentTitle}</span>
+                  </div>
+                )}
+                <div className="progress-bar">
+                  <div 
+                    className="progress-fill" 
+                    style={{ 
+                      width: likedVideosProgress.total > 0 
+                        ? `${(likedVideosProgress.current / likedVideosProgress.total) * 100}%` 
+                        : '0%'
+                    }}
+                  ></div>
+                </div>
+                <span className="progress-text">
+                  {likedVideosProgress.current} / {likedVideosProgress.total} videos processed
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Active Tabs Section */}
         <div className="tabs-section">
