@@ -90,6 +90,12 @@ chrome.runtime.onInstalled.addListener(() => {
     });
 
     chrome.contextMenus.create({
+      id: 'open-selected-text-in-ycb',
+      title: 'Open in YCB',
+      contexts: ['selection'],
+    });
+
+    chrome.contextMenus.create({
       id: 'save-url-to-ycb',
       title: 'Save URL to YCB',
       contexts: ['link'],
@@ -116,6 +122,12 @@ chrome.runtime.onInstalled.addListener(() => {
     chrome.contextMenus.create({
       id: 'save-image-to-ycb',
       title: 'Save Image to YCB',
+      contexts: ['image'],
+    });
+
+    chrome.contextMenus.create({
+      id: 'open-image-in-ycb',
+      title: 'Open in YCB',
       contexts: ['image'],
     });
 
@@ -172,6 +184,54 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             console.error('Error uploading text:', err);
             showToast(tab.id, 'Failed to save text to YCB', 'error');
           });
+      });
+    });
+  }
+});
+
+// Open selected text in YCB handler
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'open-selected-text-in-ycb') {
+    chrome.storage.local.get(['apiKey'], (result) => {
+      const apiKey = result.apiKey;
+      
+      if (!apiKey) {
+        showToast(tab.id, 'Please set API key in extension options', 'error');
+        return;
+      }
+
+      const clipboardText = info.selectionText;
+      
+      getBaseUrl((baseUrl) => {
+        fetch(`${baseUrl}/backend/add`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            metadata: {
+              title: tab.title,
+              author: tab.url,
+            },
+            data: clipboardText,
+          }),
+        })
+        .then((res) => {
+          if (!res.ok) throw new Error('Upload failed');
+          return res.json();
+        })
+        .then((data) => {
+          // Open the new entry in YCB dashboard
+          chrome.tabs.create({
+            url: `${baseUrl}/dashboard/entry/${data.id}`,
+          });
+          showToast(tab.id, 'Opened in YCB successfully!', 'success');
+        })
+        .catch((err) => {
+          console.error('Error uploading text:', err);
+          showToast(tab.id, 'Failed to open in YCB', 'error');
+        });
       });
     });
   }
@@ -604,6 +664,59 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
               .catch((err) => {
                 console.error('Error uploading image:', err);
                 showToast(tab.id, 'Failed to save image to YCB', 'error');
+              });
+          });
+        });
+    });
+  }
+});
+
+// Open image in YCB handler
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'open-image-in-ycb') {
+    chrome.storage.local.get(['apiKey'], (result) => {
+      const apiKey = result.apiKey;
+
+      if (!apiKey) {
+        showToast(tab.id, 'Please set API key in extension options', 'error');
+        return;
+      }
+
+      fetch(info.srcUrl)
+        .then((res) => res.blob())
+        .then((blob) => {
+          const formData = new FormData();
+          formData.append('file', blob, 'image.jpg');
+          formData.append(
+            'metadata',
+            JSON.stringify({
+              title: 'Image',
+              author: tab.url,
+            })
+          );
+
+          getBaseUrl((baseUrl) => {
+            return fetch(`${baseUrl}/backend/v2/addImage`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: formData,
+            })
+              .then((res) => {
+                if (!res.ok) throw new Error('Upload failed');
+                return res.json();
+              })
+              .then((data) => {
+                // Open the new entry in YCB dashboard
+                chrome.tabs.create({
+                  url: `${baseUrl}/dashboard/entry/${data.id}`,
+                });
+                showToast(tab.id, 'Opened in YCB successfully!', 'success');
+              })
+              .catch((err) => {
+                console.error('Error uploading image:', err);
+                showToast(tab.id, 'Failed to open in YCB', 'error');
               });
           });
         });
