@@ -142,6 +142,13 @@ chrome.runtime.onInstalled.addListener(() => {
       title: 'Save Full Screenshot to YCB',
       contexts: ['page'],
     });
+
+    chrome.contextMenus.create({
+      id: 'save-youtube-timestamp-to-ycb',
+      title: 'Save YouTube Timestamp to YCB',
+      contexts: ['page'],
+      documentUrlPatterns: ['https://www.youtube.com/watch?*'],
+    });
   });
 });
 
@@ -194,14 +201,14 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === 'open-selected-text-in-ycb') {
     chrome.storage.local.get(['apiKey'], (result) => {
       const apiKey = result.apiKey;
-      
+
       if (!apiKey) {
         showToast(tab.id, 'Please set API key in extension options', 'error');
         return;
       }
 
       const clipboardText = info.selectionText;
-      
+
       getBaseUrl((baseUrl) => {
         fetch(`${baseUrl}/backend/add`, {
           method: 'POST',
@@ -217,21 +224,21 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
             data: clipboardText,
           }),
         })
-        .then((res) => {
-          if (!res.ok) throw new Error('Upload failed');
-          return res.json();
-        })
-        .then((data) => {
-          // Open the new entry in YCB dashboard
-          chrome.tabs.create({
-            url: `${baseUrl}/dashboard/entry/${data.id}`,
+          .then((res) => {
+            if (!res.ok) throw new Error('Upload failed');
+            return res.json();
+          })
+          .then((data) => {
+            // Open the new entry in YCB dashboard
+            chrome.tabs.create({
+              url: `${baseUrl}/dashboard/entry/${data.id}`,
+            });
+            showToast(tab.id, 'Opened in YCB successfully!', 'success');
+          })
+          .catch((err) => {
+            console.error('Error uploading text:', err);
+            showToast(tab.id, 'Failed to open in YCB', 'error');
           });
-          showToast(tab.id, 'Opened in YCB successfully!', 'success');
-        })
-        .catch((err) => {
-          console.error('Error uploading text:', err);
-          showToast(tab.id, 'Failed to open in YCB', 'error');
-        });
       });
     });
   }
@@ -281,6 +288,9 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
   } else if (info.menuItemId === 'save-full-screenshot-to-ycb') {
     // Capture full screenshot and upload directly
     captureFullScreenshot(tab);
+  } else if (info.menuItemId === 'save-youtube-timestamp-to-ycb') {
+    // Capture YouTube video frame at current timestamp
+    captureYouTubeTimestamp(tab);
   }
 });
 
@@ -373,6 +383,106 @@ function captureFullScreenshot(tab) {
   });
 }
 
+// Function to capture YouTube video frame at current timestamp
+function captureYouTubeTimestamp(tab) {
+  chrome.storage.local.get(['apiKey'], (result) => {
+    const apiKey = result.apiKey;
+
+    if (!apiKey) {
+      showToast(tab.id, 'Please set API key in extension options', 'error');
+      return;
+    }
+
+    // Execute script to get current timestamp and capture video frame
+    chrome.scripting.executeScript(
+      {
+        target: { tabId: tab.id },
+        function: captureYouTubeVideoFrame,
+      },
+      (results) => {
+        if (chrome.runtime.lastError) {
+          console.error('Script injection failed:', chrome.runtime.lastError);
+          showToast(tab.id, 'Failed to capture video frame', 'error');
+          return;
+        }
+
+        if (!results || !results[0] || !results[0].result) {
+          showToast(tab.id, 'Failed to capture video frame', 'error');
+          return;
+        }
+
+        const { timestamp, videoFrame, videoTitle, channelName, videoUrl } =
+          results[0].result;
+
+        if (!videoFrame) {
+          showToast(tab.id, 'Failed to capture video frame', 'error');
+          return;
+        }
+
+        // First get transcript, then upload with metadata
+        getYouTubeTranscriptAtTimestamp(
+          {
+            timestamp,
+            videoTitle,
+            channelName,
+            videoUrl,
+            tabId: tab.id,
+          },
+          apiKey,
+          videoFrame
+        );
+      }
+    );
+  });
+}
+
+// Function to capture video frame from YouTube page
+function captureYouTubeVideoFrame() {
+  try {
+    const video = document.querySelector('video');
+    if (!video) {
+      throw new Error('No video element found');
+    }
+
+    const currentTime = video.currentTime;
+    const videoTitle =
+      document.querySelector(
+        'h1.ytd-video-primary-info-renderer yt-formatted-string'
+      )?.textContent ||
+      document.querySelector('h1.title')?.textContent ||
+      'YouTube Video';
+    const channelName =
+      document.querySelector('ytd-channel-name a')?.textContent?.trim() ||
+      document.querySelector('#channel-name')?.textContent?.trim() ||
+      'Unknown Channel';
+
+    // Create canvas to capture video frame
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+
+    // Convert to data URL
+    const dataUrl = canvas.toDataURL('image/png');
+
+    // Format timestamp for URL
+    const timestampSeconds = Math.floor(currentTime);
+    const timestampUrl = `${window.location.href}&t=${timestampSeconds}s`;
+
+    return {
+      timestamp: timestampSeconds,
+      videoFrame: dataUrl,
+      videoTitle,
+      channelName,
+      videoUrl: timestampUrl,
+    };
+  } catch (error) {
+    console.error('Error capturing video frame:', error);
+    return null;
+  }
+}
+
 // Function to upload screenshot (returns Promise for async handling)
 function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
   return new Promise((resolve, reject) => {
@@ -435,6 +545,299 @@ function uploadScreenshot(dataUrl, tabInfo, apiKey, title) {
       })
       .catch(reject);
   });
+}
+
+// Function to upload YouTube video frame to YCB
+function uploadYouTubeFrame(
+  dataUrl,
+  frameInfo,
+  apiKey,
+  transcriptAtTimestamp = null
+) {
+  return new Promise((resolve, reject) => {
+    fetch(dataUrl)
+      .then((res) => res.blob())
+      .then((blob) => {
+        const formData = new FormData();
+        formData.append('file', blob, 'youtube-frame.png');
+
+        const metadata = {
+          title: `${frameInfo.videoTitle} - Frame at ${formatTimestamp(
+            frameInfo.timestamp
+          )}`,
+          author: frameInfo.videoUrl,
+          type: 'image',
+          timestamp: frameInfo.timestamp,
+          channelName: frameInfo.channelName,
+          videoTitle: frameInfo.videoTitle,
+        };
+
+        // Add transcript if available
+        if (transcriptAtTimestamp) {
+          metadata.transcriptAtTimestamp = transcriptAtTimestamp;
+        }
+
+        formData.append('metadata', JSON.stringify(metadata));
+
+        getBaseUrl((baseUrl) => {
+          fetch(`${baseUrl}/backend/v2/addImage`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: formData,
+          })
+            .then((res) => {
+              if (!res.ok) throw new Error('Upload failed');
+              return res.json();
+            })
+            .then((data) => {
+              console.log('YouTube frame uploaded:', data);
+
+              // Show success toast
+              if (frameInfo.tabId) {
+                showToast(
+                  frameInfo.tabId,
+                  'Video frame saved to YCB successfully!',
+                  'success'
+                );
+              }
+
+              resolve(data);
+            })
+            .catch((err) => {
+              console.error('Error uploading YouTube frame:', err);
+
+              if (frameInfo.tabId) {
+                showToast(
+                  frameInfo.tabId,
+                  'Failed to save video frame to YCB',
+                  'error'
+                );
+              }
+
+              reject(err);
+            });
+        });
+      })
+      .catch(reject);
+  });
+}
+
+// Helper function to format timestamp (seconds to mm:ss)
+function formatTimestamp(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+// Function to get YouTube transcript at specific timestamp and upload frame
+function getYouTubeTranscriptAtTimestamp(frameInfo, apiKey, videoFrame) {
+  console.log('Starting transcript extraction for frame:', frameInfo);
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (!tabs[0]) {
+      console.log('No active tab found');
+      return;
+    }
+
+    console.log('Executing transcript extraction script on tab:', tabs[0].id);
+    chrome.scripting.executeScript(
+      {
+        target: { tabId: tabs[0].id },
+        function: extractTranscriptAtTimestamp,
+        args: [frameInfo.timestamp],
+      },
+      (results) => {
+        console.log('Script execution completed, results:', results);
+        if (chrome.runtime.lastError) {
+          console.error(
+            'Transcript extraction failed:',
+            chrome.runtime.lastError
+          );
+        }
+
+        let transcriptAtTimestamp = null;
+
+        // Extract transcript if available
+        if (results && results[0] && results[0].result) {
+          const { transcript, debug } = results[0].result;
+          console.log('Transcript extraction result:', { transcript });
+          if (debug) {
+            console.log('Debug info:', debug);
+          }
+          if (transcript) {
+            transcriptAtTimestamp = transcript;
+          }
+        } else {
+          console.log('No transcript results:', results);
+        }
+
+        console.log('Final transcript to include:', transcriptAtTimestamp);
+
+        // Upload the video frame with transcript in metadata
+        uploadYouTubeFrame(
+          videoFrame,
+          frameInfo,
+          apiKey,
+          transcriptAtTimestamp
+        );
+      }
+    );
+  });
+}
+
+// Function to extract transcript at specific timestamp
+function extractTranscriptAtTimestamp(targetTimestamp) {
+  const debug = [];
+  debug.push('=== TRANSCRIPT EXTRACTION STARTING ===');
+  debug.push('Target timestamp: ' + targetTimestamp);
+  debug.push('Current URL: ' + window.location.href);
+  
+  try {
+    // Close cookie banner if exists
+    document.querySelector('button[aria-label*=cookies]')?.click();
+
+    // Click the "show transcript" button
+    const transcriptBtn = document.querySelector(
+      'ytd-video-description-transcript-section-renderer button'
+    );
+    if (!transcriptBtn) {
+      debug.push('No transcript button found');
+      return { transcript: '', channelName: 'Unknown Channel', debug };
+    }
+
+    debug.push('Transcript button found, clicking...');
+    transcriptBtn.click();
+
+    // Wait for transcript container to appear
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        try {
+          debug.push('Looking for transcript segments...');
+          // Get all transcript segments
+          const transcriptSegments = Array.from(
+            document.querySelectorAll(
+              '#segments-container .ytd-transcript-segment-renderer'
+            )
+          );
+          
+          debug.push('Found transcript segments: ' + transcriptSegments.length);
+
+          if (transcriptSegments.length === 0) {
+            debug.push('No transcript segments found');
+            resolve({ transcript: '', channelName: 'Unknown Channel', debug });
+            return;
+          }
+
+          // Find the segment closest to our target timestamp
+          let closestSegment = null;
+          let closestDistance = Infinity;
+
+          debug.push('Target timestamp: ' + targetTimestamp);
+          transcriptSegments.forEach((segment, index) => {
+            const timestampElement = segment.querySelector('.segment-timestamp');
+            if (timestampElement) {
+              const timestampText = timestampElement.textContent.trim();
+              debug.push(`Segment ${index}: timestamp text "${timestampText}"`);
+              
+              // Parse timestamp format like "17:26" to seconds
+              const timeParts = timestampText.split(':');
+              let startSeconds = 0;
+              if (timeParts.length === 2) {
+                // MM:SS format
+                startSeconds = parseInt(timeParts[0]) * 60 + parseInt(timeParts[1]);
+              } else if (timeParts.length === 3) {
+                // HH:MM:SS format
+                startSeconds = parseInt(timeParts[0]) * 3600 + parseInt(timeParts[1]) * 60 + parseInt(timeParts[2]);
+              }
+              
+              const distance = Math.abs(startSeconds - targetTimestamp);
+              debug.push(`Segment ${index}: ${startSeconds}s (distance: ${distance}s)`);
+
+              if (distance < closestDistance) {
+                closestDistance = distance;
+                closestSegment = segment;
+              }
+            } else {
+              debug.push(`Segment ${index}: No timestamp element found`);
+            }
+          });
+
+          debug.push('Closest segment found: ' + (closestSegment ? 'YES' : 'NO') + ', distance: ' + closestDistance);
+
+          let transcriptText = '';
+          if (closestSegment) {
+            // Get text from segments within ±10 seconds of target timestamp
+            const timeWindow = 10; // seconds
+            const startTime = targetTimestamp - timeWindow;
+            const endTime = targetTimestamp + timeWindow;
+            
+            debug.push(`Extracting segments from ${startTime}s to ${endTime}s (±${timeWindow}s window)`);
+
+            transcriptSegments.forEach((segment, index) => {
+              const timestampElement = segment.querySelector('.segment-timestamp');
+              if (timestampElement) {
+                const timestampText = timestampElement.textContent.trim();
+                const timeParts = timestampText.split(':');
+                let segmentSeconds = 0;
+                
+                if (timeParts.length === 2) {
+                  segmentSeconds = parseInt(timeParts[0]) * 60 + parseInt(timeParts[1]);
+                } else if (timeParts.length === 3) {
+                  segmentSeconds = parseInt(timeParts[0]) * 3600 + parseInt(timeParts[1]) * 60 + parseInt(timeParts[2]);
+                }
+                
+                // Include segments within the time window
+                if (segmentSeconds >= startTime && segmentSeconds <= endTime) {
+                  debug.push(`Including segment ${index} at ${segmentSeconds}s`);
+                  
+                  const textElement = segment.querySelector('yt-formatted-string.segment-text');
+                  if (textElement) {
+                    const text = textElement.textContent.trim();
+                    debug.push('Extracted text: "' + text + '"');
+                    transcriptText += text + ' ';
+                  } else {
+                    // Try alternative selector
+                    const altTextElement = segment.querySelector('yt-formatted-string');
+                    if (altTextElement) {
+                      const altText = altTextElement.textContent.trim();
+                      debug.push('Alternative text extraction: "' + altText + '"');
+                      transcriptText += altText + ' ';
+                    } else {
+                      debug.push('No text element found in segment ' + index);
+                    }
+                  }
+                }
+              }
+            });
+          } else {
+            debug.push('No closest segment found');
+          }
+
+          // Get channel name
+          const channelElement = document.querySelector('ytd-channel-name');
+          const channelName =
+            channelElement?.textContent.trim().split('\n')[0] ||
+            'Unknown Channel';
+
+          const result = {
+            transcript: transcriptText.trim(),
+            channelName: channelName,
+            debug: debug
+          };
+          
+          debug.push('Final transcript: "' + transcriptText.trim() + '"');
+          resolve(result);
+        } catch (error) {
+          debug.push('Error extracting transcript: ' + error.message);
+          resolve({ transcript: '', channelName: 'Unknown Channel', debug });
+        }
+      }, 3000); // Wait 3 seconds for transcript to load
+    });
+  } catch (error) {
+    debug.push('Error in extractTranscriptAtTimestamp: ' + error.message);
+    return Promise.resolve({ transcript: '', channelName: 'Unknown Channel', debug });
+  }
 }
 
 // TODO screenshot comment Function to poll for object metadata

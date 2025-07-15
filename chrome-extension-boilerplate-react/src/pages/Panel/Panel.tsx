@@ -5,16 +5,15 @@ import { InstantSearch, InfiniteHits } from 'react-instantsearch';
 import CustomSearchBox from './CustomSearchBox';
 
 // URLs that should include OG description in tab titles
-const DESCRIPTION_ENHANCED_URLS = [
-  'instagram.com',
-  'netflix.com',
-];
+const DESCRIPTION_ENHANCED_URLS = ['instagram.com', 'netflix.com'];
 
 // Helper function to check if URL should include OG description
 const shouldIncludeDescription = (url: string): boolean => {
   try {
     const hostname = new URL(url).hostname.toLowerCase();
-    return DESCRIPTION_ENHANCED_URLS.some(domain => hostname.includes(domain));
+    return DESCRIPTION_ENHANCED_URLS.some((domain) =>
+      hostname.includes(domain)
+    );
   } catch {
     return false;
   }
@@ -228,17 +227,28 @@ const Panel: React.FC = () => {
   const [activeTabs, setActiveTabs] = useState<chrome.tabs.Tab[]>([]);
   const [currentActiveTab, setCurrentActiveTab] =
     useState<chrome.tabs.Tab | null>(null);
-  const [tabDescriptions, setTabDescriptions] = useState<{ [key: number]: string }>({});
+  const [tabDescriptions, setTabDescriptions] = useState<{
+    [key: number]: string;
+  }>({});
   const [isAddingTab, setIsAddingTab] = useState<{ [key: string]: boolean }>(
     {}
   );
-  const [isUploadingLikedVideos, setIsUploadingLikedVideos] = useState<boolean>(false);
-  const [likedVideosProgress, setLikedVideosProgress] = useState<{ current: number; total: number; currentTitle: string }>({ current: 0, total: 0, currentTitle: '' });
+  const [isUploadingLikedVideos, setIsUploadingLikedVideos] =
+    useState<boolean>(false);
+  const [likedVideosProgress, setLikedVideosProgress] = useState<{
+    current: number;
+    total: number;
+    currentTitle: string;
+  }>({ current: 0, total: 0, currentTitle: '' });
   const [skipCount, setSkipCount] = useState<string>('0');
   const [stopIndex, setStopIndex] = useState<string>('');
   const shouldStopUploadRef = useRef<boolean>(false);
   const [isUploadingIgSaved, setIsUploadingIgSaved] = useState<boolean>(false);
-  const [igSavedProgress, setIgSavedProgress] = useState<{ current: number; total: number; currentTitle: string }>({ current: 0, total: 0, currentTitle: '' });
+  const [igSavedProgress, setIgSavedProgress] = useState<{
+    current: number;
+    total: number;
+    currentTitle: string;
+  }>({ current: 0, total: 0, currentTitle: '' });
   const [igSkipCount, setIgSkipCount] = useState<string>('0');
   const [igStopIndex, setIgStopIndex] = useState<string>('');
   const shouldStopIgUploadRef = useRef<boolean>(false);
@@ -275,7 +285,7 @@ const Panel: React.FC = () => {
         // Find the current active tab
         const activeTab = tabs.find((tab) => tab.active);
         setCurrentActiveTab(activeTab || null);
-        
+
         // Fetch descriptions for tabs that match our enhanced URL list
         tabs.forEach((tab) => {
           if (tab.url && shouldIncludeDescription(tab.url)) {
@@ -568,18 +578,24 @@ const Panel: React.FC = () => {
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: () => {
-          const ogDescriptionTag = document.querySelector('meta[property="og:description"]');
-          const descriptionTag = document.querySelector('meta[name="description"]');
-          return ogDescriptionTag?.getAttribute('content') || 
-                 descriptionTag?.getAttribute('content') || 
-                 '';
+          const ogDescriptionTag = document.querySelector(
+            'meta[property="og:description"]'
+          );
+          const descriptionTag = document.querySelector(
+            'meta[name="description"]'
+          );
+          return (
+            ogDescriptionTag?.getAttribute('content') ||
+            descriptionTag?.getAttribute('content') ||
+            ''
+          );
         },
       });
 
       if (results && results[0] && results[0].result) {
-        setTabDescriptions(prev => ({
+        setTabDescriptions((prev) => ({
           ...prev,
-          [tab.id!]: results[0].result
+          [tab.id!]: results[0].result,
         }));
       }
     } catch (error) {
@@ -967,12 +983,12 @@ const Panel: React.FC = () => {
             title: enhancedTitle,
             author: tab.url,
           },
-          "duplicate_check": {
-              "fields": {
-                  "metadata": {
-                      "author": tab.url
-                  }
-              }
+          duplicate_check: {
+            fields: {
+              metadata: {
+                author: tab.url,
+              },
+            },
           },
         }),
       });
@@ -998,7 +1014,11 @@ const Panel: React.FC = () => {
 
     setIsUploadingLikedVideos(true);
     shouldStopUploadRef.current = false;
-    setLikedVideosProgress({ current: 0, total: 0, currentTitle: 'Collecting videos...' });
+    setLikedVideosProgress({
+      current: 0,
+      total: 0,
+      currentTitle: 'Collecting videos...',
+    });
 
     try {
       const result = await new Promise<{ apiKey?: string }>((resolve) => {
@@ -1022,37 +1042,45 @@ const Panel: React.FC = () => {
 
             // Function to extract video data from current viewport
             const extractCurrentVideos = () => {
-              const videoElements = document.querySelectorAll('ytd-playlist-video-renderer');
+              const videoElements = document.querySelectorAll(
+                'ytd-playlist-video-renderer'
+              );
               const currentVideos = [];
-              
+
               videoElements.forEach((element) => {
                 const linkElement = element.querySelector('a#video-title');
-                const channelElement = element.querySelector('ytd-channel-name a, #channel-name a');
-                
+                const channelElement = element.querySelector(
+                  'ytd-channel-name a, #channel-name a'
+                );
+
                 if (linkElement) {
                   const href = linkElement.href;
-                  const title = linkElement.textContent?.trim() || 'Unknown Title';
-                  const channelName = channelElement?.textContent?.trim() || 'Unknown Channel';
-                  
+                  const title =
+                    linkElement.textContent?.trim() || 'Unknown Title';
+                  const channelName =
+                    channelElement?.textContent?.trim() || 'Unknown Channel';
+
                   if (href && href.includes('/watch?v=')) {
-                    const existingVideo = currentVideos.find(v => v.url === href);
+                    const existingVideo = currentVideos.find(
+                      (v) => v.url === href
+                    );
                     if (!existingVideo) {
                       currentVideos.push({ url: href, title, channelName });
                     }
                   }
                 }
               });
-              
+
               return currentVideos;
             };
 
             // Function to scroll and wait for new content
             const scrollAndWait = (callback) => {
               const beforeCount = extractCurrentVideos().length;
-              
+
               // Scroll to bottom of the page
               window.scrollTo(0, document.body.scrollHeight);
-              
+
               // Wait for new content to load
               setTimeout(() => {
                 const afterCount = extractCurrentVideos().length;
@@ -1070,7 +1098,7 @@ const Panel: React.FC = () => {
                 resolve({
                   videos: videos,
                   totalFound: videos.length,
-                  pagesScrolled: attempts
+                  pagesScrolled: attempts,
                 });
                 return;
               }
@@ -1078,8 +1106,8 @@ const Panel: React.FC = () => {
               scrollAndWait((foundNewContent) => {
                 if (foundNewContent) {
                   const newVideos = extractCurrentVideos();
-                  newVideos.forEach(video => {
-                    const existing = videos.find(v => v.url === video.url);
+                  newVideos.forEach((video) => {
+                    const existing = videos.find((v) => v.url === video.url);
                     if (!existing) {
                       videos.push(video);
                     }
@@ -1087,9 +1115,9 @@ const Panel: React.FC = () => {
                 } else {
                   hasMoreContent = false;
                 }
-                
+
                 attempts++;
-                
+
                 // Continue processing
                 setTimeout(processNext, 500); // Increased delay between scroll attempts
               });
@@ -1111,17 +1139,17 @@ const Panel: React.FC = () => {
       const stopAt = parseInt(stopIndex) || extractResult.videos.length;
       const endIndex = Math.min(stopAt, extractResult.videos.length);
       const videosToProcess = extractResult.videos.slice(skipVideos, endIndex);
-      
-      const rangeText = stopIndex 
+
+      const rangeText = stopIndex
         ? `Processing videos ${skipVideos + 1} to ${endIndex}...`
-        : skipVideos > 0 
-          ? `Skipping first ${skipVideos} videos...` 
-          : 'Starting upload...';
-      
-      setLikedVideosProgress({ 
-        current: 0, 
-        total: videosToProcess.length, 
-        currentTitle: rangeText
+        : skipVideos > 0
+        ? `Skipping first ${skipVideos} videos...`
+        : 'Starting upload...';
+
+      setLikedVideosProgress({
+        current: 0,
+        total: videosToProcess.length,
+        currentTitle: rangeText,
       });
 
       const baseUrl = await getBaseUrl();
@@ -1139,11 +1167,11 @@ const Panel: React.FC = () => {
         const video = videosToProcess[i];
         const actualVideoNumber = skipVideos + i + 1;
         const videoData = `${video.title} - ${video.channelName}`;
-        
-        setLikedVideosProgress({ 
-          current: i + 1, 
-          total: videosToProcess.length, 
-          currentTitle: `#${actualVideoNumber}: ${video.title}` 
+
+        setLikedVideosProgress({
+          current: i + 1,
+          total: videosToProcess.length,
+          currentTitle: `#${actualVideoNumber}: ${video.title}`,
         });
 
         try {
@@ -1159,12 +1187,12 @@ const Panel: React.FC = () => {
                 title: videoData,
                 author: video.url,
               },
-              "duplicate_check": {
-                  "fields": {
-                      "metadata": {
-                          "author": video.url
-                      }
-                  }
+              duplicate_check: {
+                fields: {
+                  metadata: {
+                    author: video.url,
+                  },
+                },
               },
             }),
           });
@@ -1179,9 +1207,15 @@ const Panel: React.FC = () => {
               successCount++;
             }
           } else {
-            console.error(`Failed to upload video "${videoData}":`, response.statusText);
+            console.error(
+              `Failed to upload video "${videoData}":`,
+              response.statusText
+            );
             if (response.status === 429) {
-              showToast('Rate limited. Waiting longer between requests...', 'error');
+              showToast(
+                'Rate limited. Waiting longer between requests...',
+                'error'
+              );
             }
           }
         } catch (error) {
@@ -1189,7 +1223,7 @@ const Panel: React.FC = () => {
         }
 
         // Longer delay between requests to avoid rate limiting (2 seconds)
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
       if (!shouldStopUploadRef.current) {
@@ -1213,14 +1247,21 @@ const Panel: React.FC = () => {
   };
 
   const handleUploadIgSaved = async () => {
-    if (!currentActiveTab?.url?.includes('instagram.com') || !currentActiveTab?.url?.includes('/saved/')) {
+    if (
+      !currentActiveTab?.url?.includes('instagram.com') ||
+      !currentActiveTab?.url?.includes('/saved/')
+    ) {
       showToast('Please navigate to Instagram Saved Posts page first', 'error');
       return;
     }
 
     setIsUploadingIgSaved(true);
     shouldStopIgUploadRef.current = false;
-    setIgSavedProgress({ current: 0, total: 0, currentTitle: 'Collecting saved posts...' });
+    setIgSavedProgress({
+      current: 0,
+      total: 0,
+      currentTitle: 'Collecting saved posts...',
+    });
 
     try {
       const result = await new Promise<{ apiKey?: string }>((resolve) => {
@@ -1244,36 +1285,40 @@ const Panel: React.FC = () => {
 
             // Function to extract post data from current viewport
             const extractCurrentPosts = () => {
-              const postElements = document.querySelectorAll('article img[alt], a img[alt]');
+              const postElements = document.querySelectorAll(
+                'article img[alt], a img[alt]'
+              );
               const currentPosts = [];
-              
+
               postElements.forEach((element) => {
                 const img = element;
                 const postLink = img.closest('a');
-                
+
                 if (img && postLink) {
                   const alt = img.getAttribute('alt');
                   const href = postLink.href;
-                  
+
                   if (alt && href && href.includes('/p/')) {
-                    const existingPost = currentPosts.find(p => p.url === href);
+                    const existingPost = currentPosts.find(
+                      (p) => p.url === href
+                    );
                     if (!existingPost) {
                       currentPosts.push({ url: href, alt: alt.trim() });
                     }
                   }
                 }
               });
-              
+
               return currentPosts;
             };
 
             // Function to scroll and wait for new content
             const scrollAndWait = (callback) => {
               const beforeCount = extractCurrentPosts().length;
-              
+
               // Scroll to bottom of the page
               window.scrollTo(0, document.body.scrollHeight);
-              
+
               // Wait for new content to load
               setTimeout(() => {
                 const afterCount = extractCurrentPosts().length;
@@ -1291,7 +1336,7 @@ const Panel: React.FC = () => {
                 resolve({
                   posts: posts,
                   totalFound: posts.length,
-                  pagesScrolled: attempts
+                  pagesScrolled: attempts,
                 });
                 return;
               }
@@ -1299,8 +1344,8 @@ const Panel: React.FC = () => {
               scrollAndWait((foundNewContent) => {
                 if (foundNewContent) {
                   const newPosts = extractCurrentPosts();
-                  newPosts.forEach(post => {
-                    const existing = posts.find(p => p.url === post.url);
+                  newPosts.forEach((post) => {
+                    const existing = posts.find((p) => p.url === post.url);
                     if (!existing) {
                       posts.push(post);
                     }
@@ -1308,9 +1353,9 @@ const Panel: React.FC = () => {
                 } else {
                   hasMoreContent = false;
                 }
-                
+
                 attempts++;
-                
+
                 // Continue processing
                 setTimeout(processNext, 500);
               });
@@ -1332,17 +1377,17 @@ const Panel: React.FC = () => {
       const stopAt = parseInt(igStopIndex) || extractResult.posts.length;
       const endIndex = Math.min(stopAt, extractResult.posts.length);
       const postsToProcess = extractResult.posts.slice(skipPosts, endIndex);
-      
-      const rangeText = igStopIndex 
+
+      const rangeText = igStopIndex
         ? `Processing posts ${skipPosts + 1} to ${endIndex}...`
-        : skipPosts > 0 
-          ? `Skipping first ${skipPosts} posts...` 
-          : 'Starting upload...';
-      
-      setIgSavedProgress({ 
-        current: 0, 
-        total: postsToProcess.length, 
-        currentTitle: rangeText
+        : skipPosts > 0
+        ? `Skipping first ${skipPosts} posts...`
+        : 'Starting upload...';
+
+      setIgSavedProgress({
+        current: 0,
+        total: postsToProcess.length,
+        currentTitle: rangeText,
       });
 
       const baseUrl = await getBaseUrl();
@@ -1359,22 +1404,23 @@ const Panel: React.FC = () => {
 
         const post = postsToProcess[i];
         const actualPostNumber = skipPosts + i + 1;
-        
-        setIgSavedProgress({ 
-          current: i + 1, 
-          total: postsToProcess.length, 
-          currentTitle: `#${actualPostNumber}: ${post.alt}` 
+
+        setIgSavedProgress({
+          current: i + 1,
+          total: postsToProcess.length,
+          currentTitle: `#${actualPostNumber}: ${post.alt}`,
         });
 
         // Add glow border to currently processing post
-        chrome.scripting.executeScript({
-          target: { tabId: currentActiveTab.id! },
-          func: (postUrl) => {
-            // Inject glow styles if not already present
-            if (!document.getElementById('ig-glow-styles')) {
-              const style = document.createElement('style');
-              style.id = 'ig-glow-styles';
-              style.textContent = `
+        chrome.scripting
+          .executeScript({
+            target: { tabId: currentActiveTab.id! },
+            func: (postUrl) => {
+              // Inject glow styles if not already present
+              if (!document.getElementById('ig-glow-styles')) {
+                const style = document.createElement('style');
+                style.id = 'ig-glow-styles';
+                style.textContent = `
                 .ig-processing-glow {
                   position: relative;
                   border: 3px solid #e1306c !important;
@@ -1399,33 +1445,42 @@ const Panel: React.FC = () => {
                   }
                 }
               `;
-              document.head.appendChild(style);
-            }
-
-            // Remove previous glow
-            const previousGlow = document.querySelector('.ig-processing-glow');
-            if (previousGlow) {
-              previousGlow.classList.remove('ig-processing-glow');
-            }
-
-            // Find the current post and add glow
-            try {
-              const links = document.querySelectorAll('a[href*="/p/"]');
-              for (const link of links) {
-                if (link.href === postUrl) {
-                  // Find the closest article container or the link itself
-                  const container = link.closest('article') || link;
-                  container.classList.add('ig-processing-glow');
-                  container.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  break;
-                }
+                document.head.appendChild(style);
               }
-            } catch (error) {
-              console.log('Could not find Instagram post for glow effect:', error);
-            }
-          },
-          args: [post.url],
-        }).catch(err => console.log('Could not add glow effect:', err));
+
+              // Remove previous glow
+              const previousGlow = document.querySelector(
+                '.ig-processing-glow'
+              );
+              if (previousGlow) {
+                previousGlow.classList.remove('ig-processing-glow');
+              }
+
+              // Find the current post and add glow
+              try {
+                const links = document.querySelectorAll('a[href*="/p/"]');
+                for (const link of links) {
+                  if (link.href === postUrl) {
+                    // Find the closest article container or the link itself
+                    const container = link.closest('article') || link;
+                    container.classList.add('ig-processing-glow');
+                    container.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'center',
+                    });
+                    break;
+                  }
+                }
+              } catch (error) {
+                console.log(
+                  'Could not find Instagram post for glow effect:',
+                  error
+                );
+              }
+            },
+            args: [post.url],
+          })
+          .catch((err) => console.log('Could not add glow effect:', err));
 
         try {
           const response = await fetch(`${baseUrl}/backend/add`, {
@@ -1440,12 +1495,12 @@ const Panel: React.FC = () => {
                 title: 'Instagram Saved',
                 author: post.url,
               },
-              "duplicate_check": {
-                  "fields": {
-                      "metadata": {
-                          "author": post.url
-                      }
-                  }
+              duplicate_check: {
+                fields: {
+                  metadata: {
+                    author: post.url,
+                  },
+                },
               },
             }),
           });
@@ -1453,16 +1508,30 @@ const Panel: React.FC = () => {
           if (response.ok) {
             const data = await response.json();
             if (data.isDuplicate) {
-              console.log('Duplicate Instagram post skipped:', post.alt, post.url);
+              console.log(
+                'Duplicate Instagram post skipped:',
+                post.alt,
+                post.url
+              );
               duplicateCount++;
             } else {
-              console.log('Instagram post uploaded successfully:', post.alt, post.url);
+              console.log(
+                'Instagram post uploaded successfully:',
+                post.alt,
+                post.url
+              );
               successCount++;
             }
           } else {
-            console.error(`Failed to upload Instagram post "${post.alt}":`, response.statusText);
+            console.error(
+              `Failed to upload Instagram post "${post.alt}":`,
+              response.statusText
+            );
             if (response.status === 429) {
-              showToast('Rate limited. Waiting longer between requests...', 'error');
+              showToast(
+                'Rate limited. Waiting longer between requests...',
+                'error'
+              );
             }
           }
         } catch (error) {
@@ -1470,18 +1539,20 @@ const Panel: React.FC = () => {
         }
 
         // Remove glow effect from current post
-        chrome.scripting.executeScript({
-          target: { tabId: currentActiveTab.id! },
-          func: () => {
-            const currentGlow = document.querySelector('.ig-processing-glow');
-            if (currentGlow) {
-              currentGlow.classList.remove('ig-processing-glow');
-            }
-          },
-        }).catch(err => console.log('Could not remove glow effect:', err));
+        chrome.scripting
+          .executeScript({
+            target: { tabId: currentActiveTab.id! },
+            func: () => {
+              const currentGlow = document.querySelector('.ig-processing-glow');
+              if (currentGlow) {
+                currentGlow.classList.remove('ig-processing-glow');
+              }
+            },
+          })
+          .catch((err) => console.log('Could not remove glow effect:', err));
 
         // Delay between requests to avoid rate limiting (2 seconds)
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
 
       if (!shouldStopIgUploadRef.current) {
@@ -1492,7 +1563,10 @@ const Panel: React.FC = () => {
       }
     } catch (error) {
       console.error('Error uploading Instagram saved posts:', error);
-      showToast('Failed to upload Instagram saved posts. Please try again.', 'error');
+      showToast(
+        'Failed to upload Instagram saved posts. Please try again.',
+        'error'
+      );
     } finally {
       setIsUploadingIgSaved(false);
       shouldStopIgUploadRef.current = false;
@@ -1505,9 +1579,13 @@ const Panel: React.FC = () => {
   };
 
   // Check if current tab is YouTube liked videos page
-  const isYouTubeLikedVideosPage = currentActiveTab?.url?.includes('youtube.com/playlist?list=LL');
+  const isYouTubeLikedVideosPage = currentActiveTab?.url?.includes(
+    'youtube.com/playlist?list=LL'
+  );
   // Check if current tab is Instagram saved posts page
-  const isInstagramSavedPage = currentActiveTab?.url?.includes('instagram.com') && currentActiveTab?.url?.includes('/saved/');
+  const isInstagramSavedPage =
+    currentActiveTab?.url?.includes('instagram.com') &&
+    currentActiveTab?.url?.includes('/saved/');
 
   return (
     <div className="container">
@@ -1566,7 +1644,7 @@ const Panel: React.FC = () => {
                 </span>
               </div>
             )}
-            
+
             <div className="youtube-buttons-container">
               <button
                 className="youtube-upload-btn"
@@ -1576,17 +1654,15 @@ const Panel: React.FC = () => {
                 {isUploadingLikedVideos ? (
                   <>
                     <div className="loading-spinner"></div>
-                    Uploading {likedVideosProgress.current}/{likedVideosProgress.total} videos...
+                    Uploading {likedVideosProgress.current}/
+                    {likedVideosProgress.total} videos...
                   </>
                 ) : (
                   'Upload All Liked Videos to YCB'
                 )}
               </button>
               {isUploadingLikedVideos && (
-                <button
-                  className="youtube-stop-btn"
-                  onClick={handleStopUpload}
-                >
+                <button className="youtube-stop-btn" onClick={handleStopUpload}>
                   Stop
                 </button>
               )}
@@ -1596,21 +1672,29 @@ const Panel: React.FC = () => {
                 {likedVideosProgress.currentTitle && (
                   <div className="current-video-title">
                     <span className="current-video-label">Processing:</span>
-                    <span className="current-video-text">{likedVideosProgress.currentTitle}</span>
+                    <span className="current-video-text">
+                      {likedVideosProgress.currentTitle}
+                    </span>
                   </div>
                 )}
                 <div className="progress-bar">
-                  <div 
-                    className="progress-fill" 
-                    style={{ 
-                      width: likedVideosProgress.total > 0 
-                        ? `${(likedVideosProgress.current / likedVideosProgress.total) * 100}%` 
-                        : '0%'
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width:
+                        likedVideosProgress.total > 0
+                          ? `${
+                              (likedVideosProgress.current /
+                                likedVideosProgress.total) *
+                              100
+                            }%`
+                          : '0%',
                     }}
                   ></div>
                 </div>
                 <span className="progress-text">
-                  {likedVideosProgress.current} / {likedVideosProgress.total} videos processed
+                  {likedVideosProgress.current} / {likedVideosProgress.total}{' '}
+                  videos processed
                 </span>
               </div>
             )}
@@ -1654,11 +1738,12 @@ const Panel: React.FC = () => {
                   </div>
                 </div>
                 <span className="skip-videos-help">
-                  Start: 50, Stop: 100 = Process posts #51 to #100 (count from 1)
+                  Start: 50, Stop: 100 = Process posts #51 to #100 (count from
+                  1)
                 </span>
               </div>
             )}
-            
+
             <div className="instagram-buttons-container">
               <button
                 className="instagram-upload-btn"
@@ -1668,7 +1753,8 @@ const Panel: React.FC = () => {
                 {isUploadingIgSaved ? (
                   <>
                     <div className="loading-spinner"></div>
-                    Uploading {igSavedProgress.current}/{igSavedProgress.total} posts...
+                    Uploading {igSavedProgress.current}/{igSavedProgress.total}{' '}
+                    posts...
                   </>
                 ) : (
                   'Upload All Saved Posts to YCB'
@@ -1688,21 +1774,29 @@ const Panel: React.FC = () => {
                 {igSavedProgress.currentTitle && (
                   <div className="current-video-title">
                     <span className="current-video-label">Processing:</span>
-                    <span className="current-video-text">{igSavedProgress.currentTitle}</span>
+                    <span className="current-video-text">
+                      {igSavedProgress.currentTitle}
+                    </span>
                   </div>
                 )}
                 <div className="progress-bar">
-                  <div 
-                    className="progress-fill" 
-                    style={{ 
-                      width: igSavedProgress.total > 0 
-                        ? `${(igSavedProgress.current / igSavedProgress.total) * 100}%` 
-                        : '0%'
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width:
+                        igSavedProgress.total > 0
+                          ? `${
+                              (igSavedProgress.current /
+                                igSavedProgress.total) *
+                              100
+                            }%`
+                          : '0%',
                     }}
                   ></div>
                 </div>
                 <span className="progress-text">
-                  {igSavedProgress.current} / {igSavedProgress.total} posts processed
+                  {igSavedProgress.current} / {igSavedProgress.total} posts
+                  processed
                 </span>
               </div>
             )}
@@ -1738,11 +1832,15 @@ const Panel: React.FC = () => {
                     {(() => {
                       const baseTitle = tab.title || 'Untitled';
                       const description = tab.id ? tabDescriptions[tab.id] : '';
-                      
-                      if (description && tab.url && shouldIncludeDescription(tab.url)) {
+
+                      if (
+                        description &&
+                        tab.url &&
+                        shouldIncludeDescription(tab.url)
+                      ) {
                         return `${baseTitle} - ${description}`;
                       }
-                      
+
                       return baseTitle;
                     })()}
                   </span>

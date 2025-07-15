@@ -31,16 +31,24 @@ config.plugins = (config.plugins || []).concat(
 
 webpack(config, function (err) {
   if (err) throw err;
-  
+
   // After successful build, move the ZIP file to the correct location
-  const buildZipPath = path.join(__dirname, '../build/zip', `${packageInfo.name}-${packageInfo.version}.zip`);
-  const targetZipPath = path.join(__dirname, '../zip', `${packageInfo.name}-${packageInfo.version}.zip`);
-  
+  const buildZipPath = path.join(
+    __dirname,
+    '../build/zip',
+    `${packageInfo.name}-${packageInfo.version}.zip`
+  );
+  const targetZipPath = path.join(
+    __dirname,
+    '../zip',
+    `${packageInfo.name}-${packageInfo.version}.zip`
+  );
+
   if (fs.existsSync(buildZipPath)) {
     try {
       fs.copyFileSync(buildZipPath, targetZipPath);
       console.log(`ZIP file copied to: ${targetZipPath}`);
-      
+
       // Optionally remove the ZIP from build directory
       fs.unlinkSync(buildZipPath);
       console.log(`ZIP file removed from build directory`);
