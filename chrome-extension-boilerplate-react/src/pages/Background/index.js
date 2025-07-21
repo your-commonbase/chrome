@@ -2213,6 +2213,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     setTimeout(() => {
       chrome.action.setBadgeText({ text: '' });
     }, 5000);
+  } else if (message.action === 'captureYouTubeTimestamp') {
+    // Handle YouTube timestamp capture from side panel
+    chrome.tabs.get(message.tabId, (tab) => {
+      if (tab.url && tab.url.includes('youtube.com/watch')) {
+        captureYouTubeTimestamp(tab);
+        sendResponse({ success: true });
+      } else {
+        sendResponse({ success: false, error: 'Not a YouTube video page' });
+      }
+    });
+    return true; // Required for async response
   } else if (message.action === 'uploadCroppedScreenshot') {
     // Handle cropped screenshot upload
     const { imageData, tabInfo, comment } = message;

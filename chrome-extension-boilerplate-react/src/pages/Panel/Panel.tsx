@@ -252,6 +252,7 @@ const Panel: React.FC = () => {
   const [igSkipCount, setIgSkipCount] = useState<string>('0');
   const [igStopIndex, setIgStopIndex] = useState<string>('');
   const shouldStopIgUploadRef = useRef<boolean>(false);
+  const [isCapturingYouTubeTimestamp, setIsCapturingYouTubeTimestamp] = useState<boolean>(false);
 
   const getToken = async (token: string) => {
     const baseUrl = await getBaseUrl();
@@ -1578,6 +1579,36 @@ const Panel: React.FC = () => {
     shouldStopIgUploadRef.current = true;
   };
 
+  const handleYouTubeTimestamp = async () => {
+    if (!currentActiveTab?.url?.includes('youtube.com/watch')) {
+      showToast('Please navigate to a YouTube video page first', 'error');
+      return;
+    }
+
+    setIsCapturingYouTubeTimestamp(true);
+
+    try {
+      // Send message to background script to capture YouTube timestamp
+      chrome.runtime.sendMessage({
+        action: 'captureYouTubeTimestamp',
+        tabId: currentActiveTab.id,
+      }, (response) => {
+        if (response && response.success) {
+          showToast('YouTube timestamp saved to YCB successfully!', 'success');
+        } else {
+          showToast('Failed to save YouTube timestamp. Please try again.', 'error');
+        }
+      });
+    } catch (error) {
+      console.error('Error capturing YouTube timestamp:', error);
+      showToast('Failed to save YouTube timestamp. Please try again.', 'error');
+    } finally {
+      setIsCapturingYouTubeTimestamp(false);
+    }
+  };
+
+  // Check if current tab is YouTube video page
+  const isYouTubeVideoPage = currentActiveTab?.url?.includes('youtube.com/watch');
   // Check if current tab is YouTube liked videos page
   const isYouTubeLikedVideosPage = currentActiveTab?.url?.includes(
     'youtube.com/playlist?list=LL'
@@ -2007,6 +2038,26 @@ const Panel: React.FC = () => {
             </button>
           </div> */}
         </div>
+
+        {/* YouTube Timestamp Button */}
+        {isYouTubeVideoPage && (
+          <div className="youtube-timestamp-section">
+            <button
+              className="youtube-timestamp-btn"
+              onClick={handleYouTubeTimestamp}
+              disabled={isCapturingYouTubeTimestamp}
+            >
+              {isCapturingYouTubeTimestamp ? (
+                <>
+                  <div className="loading-spinner"></div>
+                  Capturing timestamp...
+                </>
+              ) : (
+                'Save YouTube Timestamp to YCB'
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {loadingSearch && (
