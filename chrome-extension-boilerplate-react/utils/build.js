@@ -11,8 +11,8 @@ if (!process.env.NODE_ENV) {
 var webpack = require('webpack'),
   path = require('path'),
   fs = require('fs'),
-  config = require('../webpack.config'),
-  ZipPlugin = require('zip-webpack-plugin');
+  { execSync } = require('child_process'),
+  config = require('../webpack.config');
 
 delete config.chromeExtensionBoilerplate;
 
@@ -20,40 +20,40 @@ config.mode = 'production';
 
 var packageInfo = JSON.parse(fs.readFileSync('package.json', 'utf-8'));
 
-config.plugins = (config.plugins || []).concat(
-  new ZipPlugin({
-    filename: `${packageInfo.name}-${packageInfo.version}.zip`,
-    path: '../zip', // Relative to output directory (build), so ../zip goes to project/zip
-    pathPrefix: '', // Ensure files are at root of zip
-    exclude: [/\.map$/], // Exclude source maps from zip
-  })
-);
+// Ensure the zip directory exists
+const zipDir = path.join(__dirname, '../zip');
+if (!fs.existsSync(zipDir)) {
+  fs.mkdirSync(zipDir, { recursive: true });
+}
 
 webpack(config, function (err) {
   if (err) throw err;
 
-  // After successful build, move the ZIP file to the correct location
-  const buildZipPath = path.join(
-    __dirname,
-    '../build/zip',
-    `${packageInfo.name}-${packageInfo.version}.zip`
-  );
-  const targetZipPath = path.join(
-    __dirname,
-    '../zip',
-    `${packageInfo.name}-${packageInfo.version}.zip`
-  );
+  console.log(`\n\n🎉 Success! Built ${packageInfo.name} v${packageInfo.version}\n`);
 
-  if (fs.existsSync(buildZipPath)) {
-    try {
-      fs.copyFileSync(buildZipPath, targetZipPath);
-      console.log(`ZIP file copied to: ${targetZipPath}`);
+  // Update manifest.json with correct version
+  const buildDir = path.join(__dirname, '../build');
+  const manifestPath = path.join(buildDir, 'manifest.json');
+  
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    manifest.version = packageInfo.version;
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    console.log(`✅ Updated manifest version to ${packageInfo.version}`);
+  } catch (error) {
+    console.error('❌ Error updating manifest version:', error.message);
+  }
 
-      // Optionally remove the ZIP from build directory
-      fs.unlinkSync(buildZipPath);
-      console.log(`ZIP file removed from build directory`);
-    } catch (copyErr) {
-      console.error('Error copying ZIP file:', copyErr);
-    }
+  // Create ZIP file manually
+  const zipFilename = `${packageInfo.name}-${packageInfo.version}.zip`;
+  const targetZipPath = path.join(zipDir, zipFilename);
+
+  try {
+    // Change to build directory and create zip
+    process.chdir(buildDir);
+    execSync(`zip -r "${targetZipPath}" . -x "*.map" "*.zip"`);
+    console.log(`✅ ZIP file created: ${targetZipPath}`);
+  } catch (error) {
+    console.error('❌ Error creating ZIP file:', error.message);
   }
 });
