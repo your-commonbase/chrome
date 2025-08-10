@@ -1975,7 +1975,7 @@ const Panel: React.FC = () => {
               onChange={(e) => setQuickAddText(e.target.value)}
               rows={2}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                if (e.key === 'Enter') {
                   e.preventDefault();
                   handleQuickAdd();
                 }

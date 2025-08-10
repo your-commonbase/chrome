@@ -35,6 +35,13 @@
         "mac": "Command+Shift+D"
       },
       "description": "Open YCB dashboard"
+    },
+    "save-youtube-timestamp": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+T",
+        "mac": "Command+Shift+T"
+      },
+      "description": "Save YouTube timestamp to YCB"
     }
   },
   "permissions": [

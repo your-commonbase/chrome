@@ -2351,5 +2351,18 @@ chrome.commands.onCommand.addListener((command) => {
         url: `${baseUrl}/dashboard`,
       });
     });
+  } else if (command === 'save-youtube-timestamp') {
+    // Get the current active tab first
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const currentTab = tabs[0];
+      if (!currentTab) return;
+
+      // Check if the current tab is a YouTube video page
+      if (currentTab.url && currentTab.url.includes('youtube.com/watch')) {
+        captureYouTubeTimestamp(currentTab);
+      } else {
+        showToast(currentTab.id, 'This command only works on YouTube video pages', 'error');
+      }
+    });
   }
 });
